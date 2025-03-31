@@ -8,7 +8,7 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Copiar apenas o requirements primeiro
+# Copiar apenas os arquivos de requisitos primeiro
 COPY requirements.txt .
 
 # Instalar dependências Python
@@ -20,8 +20,12 @@ RUN mkdir -p src/logs
 # Copiar todos os arquivos
 COPY . .
 
+# Adicionar um script para verificar a estrutura de diretórios no contêiner
+RUN echo "#!/bin/bash\necho '📂 Estrutura de diretórios:'\nls -la\necho '📂 Conteúdo da pasta src:'\nls -la src/\necho '🔍 Python path:'\npython -c 'import sys; print(sys.path)'\necho '🚀 Iniciando aplicação...'\nexec python api.py" > start.sh && \
+    chmod +x start.sh
+
 # Expor porta
 EXPOSE 5000
 
 # Comando para iniciar a aplicação
-CMD ["python", "api.py"] 
+CMD ["./start.sh"] 

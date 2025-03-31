@@ -1,6 +1,6 @@
 {
   "builder": "dockerfile",
-  "startCommand": "python api.py",
+  "startCommand": "./start.sh",
   "portMapping": "5000:5000",
   "mountPath": [
     {
