@@ -12,7 +12,7 @@
   "env": [
     {
       "name": "FLASK_APP",
-      "value": "app:app"
+      "value": "api.py"
     },
     {
       "name": "FLASK_ENV",
