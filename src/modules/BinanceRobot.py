@@ -1,3 +1,9 @@
+#!/usr/bin/env python3
+"""
+Módulo para operações com a API da Binance.
+Implementa um robô de trading para executar estratégias automatizadas.
+"""
+
 import os
 import time
 from datetime import datetime
