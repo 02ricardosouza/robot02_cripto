@@ -455,34 +455,39 @@ def start_bot():
                         "code": "bot_already_running"
                     }), 400
         
-        # Iniciar o robô
+        # Verificar se as variáveis de ambiente da Binance estão definidas
+        api_key = os.environ.get('BINANCE_API_KEY')
+        api_secret = os.environ.get('BINANCE_SECRET_KEY')
+        
+        if not api_key or not api_secret or api_key == 'sua_api_key_aqui' or api_secret == 'sua_secret_key_aqui':
+            logger.error("Chaves da API Binance não configuradas")
+            return jsonify({
+                "success": False,
+                "error": "Chaves da API Binance não configuradas",
+                "code": "api_keys_missing"
+            }), 400
+        
+        # Verificar saldo antes de iniciar
         try:
-            api_key = os.environ.get('BINANCE_API_KEY')
-            api_secret = os.environ.get('BINANCE_SECRET_KEY')
-            
-            if not api_key or not api_secret or api_key == 'sua_api_key_aqui' or api_secret == 'sua_secret_key_aqui':
-                return jsonify({
-                    "success": False,
-                    "error": "Chaves da API Binance não configuradas",
-                    "code": "api_keys_missing"
-                }), 400
-            
-            # Verificar saldo antes de iniciar
+            logger.info("Verificando saldo na Binance...")
             client = Client(api_key, api_secret)
             account = client.get_account()
             
             # Verificar saldo base para comprar (se precisamos de USDT, BTC, etc.)
             quote_currency = symbol.split('/')[-1] if '/' in symbol else 'USDT'  # parte após a barra ou USDT por padrão
+            logger.info(f"Moeda de cotação identificada: {quote_currency}")
             
             # Encontrar o saldo da moeda de cotação
             available_balance = 0
             for balance in account['balances']:
                 if balance['asset'] == quote_currency:
                     available_balance = float(balance['free'])
+                    logger.info(f"Saldo disponível: {available_balance} {quote_currency}")
                     break
             
             # Verificar se tem saldo suficiente
             if available_balance < traded_quantity:
+                logger.warning(f"Saldo insuficiente: disponível={available_balance}, necessário={traded_quantity}")
                 return jsonify({
                     "success": False,
                     "error": f"Saldo insuficiente. Você tem {available_balance:.8f} {quote_currency}, mas precisa de {traded_quantity:.8f} {quote_currency}",
@@ -492,113 +497,132 @@ def start_bot():
                     "currency": quote_currency
                 }), 400
             
-            # Tudo ok, criar e iniciar o bot
-            try:
-                bot = BinanceTraderBot(
-                    stock_code=operation_mode,
-                    operation_code=symbol,
-                    traded_quantity=traded_quantity,
-                    traded_percentage=100,  # 100% do valor definido pelo usuário
-                    candle_period=CANDLE_PERIOD,
-                    volatility_factor=data.get('volatility_factor', VOLATILITY_FACTOR),
-                    acceptable_loss_percentage=data.get('acceptable_loss', ACCEPTABLE_LOSS_PERCENTAGE),
-                    stop_loss_percentage=data.get('stop_loss', STOP_LOSS_PERCENTAGE),
-                    fallback_activated=data.get('fallback_activated', FALLBACK_ACTIVATED)
-                )
-                
-                # Verificar se o bot foi criado corretamente
-                if not bot:
-                    logger.error("Falha ao instanciar BinanceTraderBot - retorno None")
-                    return jsonify({
-                        "success": False,
-                        "error": "Falha ao criar o bot trader. Verifique os logs para mais detalhes.",
-                        "code": "bot_creation_failed"
-                    }), 500
-                
-                # Verificar se o bot tem os atributos necessários
-                required_attrs = ['stock_code', 'operation_code', 'traded_quantity']
-                missing_attrs = []
-                for attr in required_attrs:
-                    if not hasattr(bot, attr):
-                        missing_attrs.append(attr)
-                
-                if missing_attrs:
-                    logger.error(f"Bot criado com atributos ausentes: {missing_attrs}")
-                    return jsonify({
-                        "success": False,
-                        "error": f"Bot criado com propriedades ausentes: {', '.join(missing_attrs)}",
-                        "code": "invalid_bot_instance"
-                    }), 500
-                
-                # Adicionar bot à lista de robôs em execução
-                with bots_lock:
-                    running_bots[bot_id] = bot
-                
-                # Verificar se o bot tem o método run
-                if not hasattr(bot, 'run'):
-                    logger.error("Bot não possui método 'run'")
-                    return jsonify({
-                        "success": False,
-                        "error": "O bot não possui método de execução",
-                        "code": "invalid_bot_method"
-                    }), 500
+            logger.info(f"Saldo verificado com sucesso. Prosseguindo para criar o bot...")
             
-                # Iniciar a thread do robô
-                bot_thread = threading.Thread(target=bot.run)
-                bot_thread.daemon = True
-                bot_thread.start()
-                
-                add_log_message(f"Bot iniciado para {symbol} com modo {operation_mode}", "success")
-                
-                return jsonify({
-                    "success": True,
-                    "message": f"Robô iniciado com sucesso para {symbol}",
-                    "bot_id": bot_id
-                })
-            except Exception as e:
-                error_msg = f"Erro ao criar ou iniciar bot: {str(e)}"
-                logger.error(error_msg)
-                # Registrar o traceback completo
-                import traceback
-                logger.error(traceback.format_exc())
+        except Exception as e:
+            logger.error(f"Erro ao verificar saldo: {str(e)}")
+            return jsonify({
+                "success": False,
+                "error": "Erro ao verificar saldo na Binance",
+                "code": "saldo_verification_error"
+            }), 500
+        
+        # Tudo ok, criar e iniciar o bot
+        try:
+            from modules.BinanceRobot import BinanceTraderBot
+            # Definir globalmente as variáveis necessárias
+            import modules.BinanceRobot as BinanceRobot
+            BinanceRobot.api_key = api_key
+            BinanceRobot.secret_key = api_secret
+            
+            logger.info("Criando instância do bot...")
+            bot = BinanceTraderBot(
+                stock_code=operation_mode,
+                operation_code=symbol,
+                traded_quantity=traded_quantity,
+                traded_percentage=100,  # 100% do valor definido pelo usuário
+                candle_period=CANDLE_PERIOD,
+                volatility_factor=data.get('volatility_factor', VOLATILITY_FACTOR),
+                acceptable_loss_percentage=data.get('acceptable_loss', ACCEPTABLE_LOSS_PERCENTAGE),
+                stop_loss_percentage=data.get('stop_loss', STOP_LOSS_PERCENTAGE),
+                fallback_activated=data.get('fallback_activated', FALLBACK_ACTIVATED)
+            )
+            
+            # Verificar se o bot foi criado corretamente
+            if not bot:
+                logger.error("Falha ao instanciar BinanceTraderBot - retorno None")
                 return jsonify({
                     "success": False,
-                    "error": error_msg,
-                    "code": "bot_start_exception"
+                    "error": "Falha ao criar o bot trader. Verifique os logs para mais detalhes.",
+                    "code": "bot_creation_failed"
                 }), 500
             
-        except BinanceAPIException as e:
-            error_msg = f"Erro da API Binance: {e.message}"
-            logger.error(f"Erro ao iniciar bot - {error_msg}")
+            # Verificar se o bot tem os atributos necessários
+            required_attrs = ['stock_code', 'operation_code', 'traded_quantity']
+            missing_attrs = []
+            for attr in required_attrs:
+                if not hasattr(bot, attr):
+                    missing_attrs.append(attr)
             
-            # Verificar se é erro de saldo insuficiente
-            if e.code == -2010 and "insufficient balance" in e.message.lower():
+            if missing_attrs:
+                logger.error(f"Bot criado com atributos ausentes: {missing_attrs}")
                 return jsonify({
                     "success": False,
-                    "error": "Saldo insuficiente na Binance para realizar esta operação",
-                    "code": "insufficient_balance",
-                    "details": e.message
-                }), 400
-                
+                    "error": f"Bot criado com propriedades ausentes: {', '.join(missing_attrs)}",
+                    "code": "invalid_bot_instance"
+                }), 500
+            
+            # Adicionar bot à lista de robôs em execução
+            with bots_lock:
+                running_bots[bot_id] = bot
+            
+            # Implementar um método run customizado para o bot
+            def run_bot():
+                logger.info(f"Bot {bot_id} iniciado para {symbol}")
+                try:
+                    while True:
+                        try:
+                            bot.execute()
+                            time.sleep(bot.time_to_sleep)
+                        except Exception as e:
+                            logger.error(f"Erro durante execução do bot {bot_id}: {str(e)}")
+                            time.sleep(60)  # Esperar um minuto antes de tentar novamente
+                except Exception as e:
+                    logger.error(f"Bot {bot_id} encerrado com erro: {str(e)}")
+                    with bots_lock:
+                        if bot_id in running_bots:
+                            del running_bots[bot_id]
+            
+            # Iniciar a thread do robô
+            bot_thread = threading.Thread(target=run_bot)
+            bot_thread.daemon = True
+            bot_thread.start()
+            
+            add_log_message(f"Bot iniciado para {symbol} com modo {operation_mode}", "success")
+            
+            return jsonify({
+                "success": True,
+                "message": f"Robô iniciado com sucesso para {symbol}",
+                "bot_id": bot_id
+            })
+            
+        except Exception as e:
+            error_msg = f"Erro ao criar ou iniciar bot: {str(e)}"
+            logger.error(error_msg)
+            # Registrar o traceback completo
+            import traceback
+            logger.error(traceback.format_exc())
             return jsonify({
                 "success": False,
                 "error": error_msg,
-                "code": e.code
-            }), 400
-            
-        except Exception as e:
-            error_msg = f"Erro ao iniciar robô: {str(e)}"
-            logger.error(error_msg)
-            return jsonify({
-                "success": False,
-                "error": error_msg
+                "code": "bot_start_exception"
             }), 500
         
-    except Exception as e:
-        logger.error(f"Erro genérico ao iniciar bot: {str(e)}")
+    except BinanceAPIException as e:
+        error_msg = f"Erro da API Binance: {e.message}"
+        logger.error(f"Erro ao iniciar bot - {error_msg}")
+        
+        # Verificar se é erro de saldo insuficiente
+        if e.code == -2010 and "insufficient balance" in e.message.lower():
+            return jsonify({
+                "success": False,
+                "error": "Saldo insuficiente na Binance para realizar esta operação",
+                "code": "insufficient_balance",
+                "details": e.message
+            }), 400
+            
         return jsonify({
             "success": False,
-            "error": str(e)
+            "error": error_msg,
+            "code": e.code
+        }), 400
+        
+    except Exception as e:
+        error_msg = f"Erro ao iniciar robô: {str(e)}"
+        logger.error(error_msg)
+        return jsonify({
+            "success": False,
+            "error": error_msg
         }), 500
 
 # Parar robô
