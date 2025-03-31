@@ -163,4 +163,79 @@ class SimulationTradeModel:
         conn.commit()
         conn.close()
         
-        return deleted_count 
+        return deleted_count
+        
+    @staticmethod
+    def get_all_simulations():
+        """
+        Retorna todas as simulações agrupadas por ID com estatísticas
+        
+        Returns:
+            list: Lista de dicionários com informações de cada simulação
+        """
+        try:
+            conn = sqlite3.connect('src/database.db')
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            # Obter todos os IDs de simulação únicos
+            cursor.execute('''
+            SELECT DISTINCT simulation_id 
+            FROM simulation_trades 
+            ORDER BY MIN(timestamp) DESC
+            ''')
+            
+            # Se a consulta acima falhar, tente uma abordagem alternativa
+            if cursor.rowcount == 0:
+                cursor.execute('''
+                SELECT DISTINCT simulation_id 
+                FROM simulation_trades
+                ''')
+                
+                simulation_ids = [row[0] for row in cursor.fetchall()]
+                
+                # Ordenar manualmente por timestamp
+                cursor.execute('''
+                SELECT simulation_id, MIN(timestamp) as first_timestamp
+                FROM simulation_trades
+                GROUP BY simulation_id
+                ''')
+                
+                timestamp_map = {row[0]: row[1] for row in cursor.fetchall()}
+                simulation_ids.sort(key=lambda sim_id: timestamp_map.get(sim_id, ''), reverse=True)
+            else:
+                simulation_ids = [row[0] for row in cursor.fetchall()]
+            
+            conn.close()
+            
+            # Construir lista de resultados com estatísticas para cada simulação
+            simulations = []
+            for sim_id in simulation_ids:
+                # Obter primeiro trade para informações básicas
+                trades = SimulationTradeModel.get_trades_by_simulation(sim_id)
+                if not trades:
+                    continue
+                    
+                first_trade = trades[0]
+                stats = SimulationTradeModel.get_simulation_statistics(sim_id)
+                
+                # Determinar datas de início e fim
+                timestamps = [trade["timestamp"] for trade in trades]
+                created_at = min(timestamps) if timestamps else ""
+                updated_at = max(timestamps) if timestamps else ""
+                
+                simulations.append({
+                    "id": sim_id,
+                    "operation_code": first_trade["operation_code"],
+                    "trades_count": len(trades),
+                    "created_at": created_at,
+                    "updated_at": updated_at,
+                    "profit_loss": stats["profit_loss"],
+                    "profit_loss_percentage": stats["profit_loss_percentage"]
+                })
+                
+            return simulations
+            
+        except Exception as e:
+            print(f"Erro ao listar simulações: {str(e)}")
+            return [] 

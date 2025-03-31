@@ -49,7 +49,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const tbody = botTable.querySelector('tbody');
         tbody.innerHTML = '';
 
-        if (bots.length === 0) {
+        if (!bots || bots.length === 0) {
             const row = document.createElement('tr');
             row.innerHTML = '<td colspan="6" class="text-center">Nenhum bot em execução</td>';
             tbody.appendChild(row);
@@ -60,11 +60,17 @@ document.addEventListener('DOMContentLoaded', function() {
             const row = document.createElement('tr');
             const positionClass = bot.position === 'Comprado' ? 'badge-success' : 'badge-danger';
             
+            // Verificar se os valores são números antes de usar toFixed
+            const lastBuyPrice = bot.last_buy_price !== null && bot.last_buy_price !== undefined ? 
+                Number(bot.last_buy_price).toFixed(2) : '-';
+            const lastSellPrice = bot.last_sell_price !== null && bot.last_sell_price !== undefined ? 
+                Number(bot.last_sell_price).toFixed(2) : '-';
+            
             row.innerHTML = `
                 <td>${bot.stock_code}/${bot.operation_code}</td>
                 <td><span class="badge ${positionClass}">${bot.position}</span></td>
-                <td>${bot.last_buy_price ? bot.last_buy_price.toFixed(2) : '-'}</td>
-                <td>${bot.last_sell_price ? bot.last_sell_price.toFixed(2) : '-'}</td>
+                <td>${lastBuyPrice}</td>
+                <td>${lastSellPrice}</td>
                 <td>${bot.wallet_balance || 0}</td>
                 <td>
                     <div class="button-group">
@@ -141,7 +147,7 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .then(response => response.json())
         .then(data => {
-            if (data.status === 'success') {
+            if (data.success) {
                 showAlert('success', `Simulação ${data.simulation_id} iniciada com sucesso!`);
                 simulationForm.reset();
                 
@@ -149,7 +155,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const simId = data.simulation_id;
                 addSimulationToTable(simId, formData.stock_code, formData.operation_code);
             } else {
-                showAlert('danger', `Erro: ${data.message}`);
+                showAlert('danger', `Erro: ${data.error || 'Falha ao iniciar simulação'}`);
             }
         })
         .catch(error => {
@@ -197,12 +203,12 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .then(response => response.json())
         .then(data => {
-            if (data.status === 'success') {
+            if (data.success) {
                 showAlert('success', `Passo executado com sucesso!`);
                 // Mostrar os resultados
                 showSimulationResults(simId);
             } else {
-                showAlert('danger', `Erro: ${data.message}`);
+                showAlert('danger', `Erro: ${data.error || 'Falha ao executar simulação'}`);
             }
         })
         .catch(error => {
@@ -213,63 +219,76 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Mostrar resultados da simulação
     function showSimulationResults(simId) {
-        fetch(`/api/simulation/${simId}/results`)
+        fetch(`/api/simulation/history/${simId}`)
             .then(response => response.json())
             .then(data => {
-                if (data.status === 'success') {
+                if (data.success) {
                     // Mostrar resultados em um modal ou em um elemento da página
-                    const results = data.results;
+                    const results = data.statistics;
+                    const trades = data.trades || [];
+                    const details = data.details || {};
+                    
                     const modal = document.getElementById('results-modal');
                     const modalContent = document.getElementById('results-content');
                     
+                    // Função auxiliar para formatar números com segurança
+                    const safeFormat = (value, decimals = 2) => {
+                        if (value === null || value === undefined) return '-';
+                        return Number(value).toFixed(decimals);
+                    };
+                    
                     modalContent.innerHTML = `
                         <h3>Resultados da Simulação: ${simId}</h3>
-                        <p><strong>Moeda:</strong> ${data.stock_code}/${data.operation_code}</p>
-                        <p><strong>Total de compras:</strong> ${results.buys}</p>
-                        <p><strong>Total de vendas:</strong> ${results.sells}</p>
-                        <p><strong>Lucro/Prejuízo:</strong> ${results.profit_loss.toFixed(2)} (${results.profit_loss_percentage.toFixed(2)}%)</p>
-                        <p><strong>Saldo atual:</strong> ${results.stock_balance}</p>
-                        <p><strong>Preço atual:</strong> ${results.current_price.toFixed(2)}</p>
+                        <p><strong>Moeda:</strong> ${details.operation_code || 'N/A'}</p>
+                        <p><strong>Total de operações:</strong> ${trades.length}</p>
+                        <p><strong>Lucro/Prejuízo:</strong> ${safeFormat(results.profit_loss)} (${safeFormat(results.profit_loss_percentage)}%)</p>
                         
                         <h4>Histórico de operações:</h4>
-                        <table class="table">
-                            <thead>
-                                <tr>
-                                    <th>Tipo</th>
-                                    <th>Preço</th>
-                                    <th>Quantidade</th>
-                                    <th>Valor Total</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${results.trades.map(trade => `
+                        <div class="table-responsive">
+                            <table class="table">
+                                <thead>
                                     <tr>
-                                        <td><span class="badge badge-${trade.type === 'BUY' ? 'success' : 'danger'}">${trade.type}</span></td>
-                                        <td>${trade.price.toFixed(2)}</td>
-                                        <td>${trade.quantity}</td>
-                                        <td>${trade.total_value.toFixed(2)}</td>
+                                        <th>Tipo</th>
+                                        <th>Preço</th>
+                                        <th>Quantidade</th>
+                                        <th>Valor Total</th>
+                                        <th>Data/Hora</th>
                                     </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody>
+                                    ${trades.map(trade => `
+                                        <tr>
+                                            <td><span class="badge badge-${trade.trade_type === 'BUY' ? 'success' : 'danger'}">${trade.trade_type}</span></td>
+                                            <td>${safeFormat(trade.price)}</td>
+                                            <td>${safeFormat(trade.quantity)}</td>
+                                            <td>${safeFormat(trade.total_value)}</td>
+                                            <td>${trade.timestamp || '-'}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
                     `;
                     
+                    // Exibir o modal
                     modal.style.display = 'block';
                     
                     // Fechar modal ao clicar no X
                     const closeBtn = modal.querySelector('.close');
-                    closeBtn.addEventListener('click', function() {
-                        modal.style.display = 'none';
-                    });
+                    if (closeBtn) {
+                        closeBtn.addEventListener('click', function() {
+                            modal.style.display = 'none';
+                        });
+                    }
                     
-                    // Fechar modal ao clicar fora do conteúdo
+                    // Fechar modal ao clicar fora
                     window.addEventListener('click', function(event) {
                         if (event.target === modal) {
                             modal.style.display = 'none';
                         }
                     });
                 } else {
-                    showAlert('danger', `Erro: ${data.message}`);
+                    showAlert('danger', `Erro: ${data.error || 'Falha ao obter resultados'}`);
                 }
             })
             .catch(error => {
@@ -285,55 +304,26 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .then(response => response.json())
         .then(data => {
-            if (data.status === 'success') {
-                showAlert('success', data.message);
+            if (data.success) {
+                showAlert('success', 'Simulação finalizada com sucesso!');
                 
                 // Remover da tabela
-                const rows = simulationTable.querySelectorAll('tbody tr');
+                const tbody = simulationTable.querySelector('tbody');
+                const rows = tbody.querySelectorAll('tr');
                 rows.forEach(row => {
-                    const rowSimId = row.querySelector('.btn-stop-sim').getAttribute('data-id');
-                    if (rowSimId === simId) {
-                        row.remove();
+                    const buttons = row.querySelectorAll('button');
+                    for (let button of buttons) {
+                        if (button.getAttribute('data-id') === simId) {
+                            tbody.removeChild(row);
+                            break;
+                        }
                     }
                 });
                 
-                // Mostrar resultados finais
-                const results = data.final_results;
-                const modal = document.getElementById('results-modal');
-                const modalContent = document.getElementById('results-content');
-                
-                modalContent.innerHTML = `
-                    <h3>Resultados Finais da Simulação: ${simId}</h3>
-                    <p><strong>Total de compras:</strong> ${results.buys}</p>
-                    <p><strong>Total de vendas:</strong> ${results.sells}</p>
-                    <p><strong>Lucro/Prejuízo:</strong> ${results.profit_loss.toFixed(2)} (${results.profit_loss_percentage.toFixed(2)}%)</p>
-                    
-                    <h4>Histórico de operações:</h4>
-                    <table class="table">
-                        <thead>
-                            <tr>
-                                <th>Tipo</th>
-                                <th>Preço</th>
-                                <th>Quantidade</th>
-                                <th>Valor Total</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${results.trades.map(trade => `
-                                <tr>
-                                    <td><span class="badge badge-${trade.type === 'BUY' ? 'success' : 'danger'}">${trade.type}</span></td>
-                                    <td>${trade.price.toFixed(2)}</td>
-                                    <td>${trade.quantity}</td>
-                                    <td>${trade.total_value.toFixed(2)}</td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                `;
-                
-                modal.style.display = 'block';
+                // Mostrar os resultados finais
+                showSimulationResults(simId);
             } else {
-                showAlert('danger', `Erro: ${data.message}`);
+                showAlert('danger', `Erro: ${data.error || 'Falha ao parar simulação'}`);
             }
         })
         .catch(error => {
@@ -342,131 +332,282 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Exibir alerta
+    // Função para carregar histórico de simulações
+    function loadSimulationHistory() {
+        const historyContainer = document.getElementById('simulation-history');
+        if (!historyContainer) return;
+        
+        fetch('/api/simulation/history/list')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const simulations = data.simulations || [];
+                    
+                    if (simulations.length === 0) {
+                        historyContainer.innerHTML = '<p>Nenhuma simulação encontrada.</p>';
+                        return;
+                    }
+                    
+                    let html = `
+                        <div class="table-responsive">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Moeda</th>
+                                        <th>Data</th>
+                                        <th>Resultado</th>
+                                        <th>Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                    `;
+                    
+                    simulations.forEach(sim => {
+                        const isProfit = (sim.profit_loss && sim.profit_loss > 0);
+                        const resultClass = isProfit ? 'success' : 'danger';
+                        
+                        html += `
+                            <tr>
+                                <td>${sim.id}</td>
+                                <td>${sim.operation_code || 'N/A'}</td>
+                                <td>${sim.created_at || 'N/A'}</td>
+                                <td class="text-${resultClass}">${sim.profit_loss ? Number(sim.profit_loss).toFixed(2) : '0.00'} (${sim.profit_loss_percentage ? Number(sim.profit_loss_percentage).toFixed(2) : '0.00'}%)</td>
+                                <td>
+                                    <button class="button button-primary btn-view-sim" data-id="${sim.id}">Ver Detalhes</button>
+                                </td>
+                            </tr>
+                        `;
+                    });
+                    
+                    html += `
+                                </tbody>
+                            </table>
+                        </div>
+                    `;
+                    
+                    historyContainer.innerHTML = html;
+                    
+                    // Adicionar eventos aos botões
+                    const viewButtons = document.querySelectorAll('.btn-view-sim');
+                    viewButtons.forEach(button => {
+                        button.addEventListener('click', function() {
+                            const simId = this.getAttribute('data-id');
+                            showSimulationResults(simId);
+                        });
+                    });
+                } else {
+                    historyContainer.innerHTML = `<p class="alert alert-danger">Erro ao carregar lista de simulações: ${data.error}</p>`;
+                }
+            })
+            .catch(error => {
+                console.error('Erro ao carregar histórico de simulações:', error);
+                historyContainer.innerHTML = '<p class="alert alert-danger">Erro ao carregar lista de simulações</p>';
+            });
+    }
+
+    // Função para carregar a carteira
+    function loadWallet() {
+        const walletTable = document.getElementById('wallet-table');
+        const totalBalance = document.getElementById('total-balance');
+        const walletUpdatedAt = document.getElementById('wallet-updated-at');
+        
+        if (!walletTable || !totalBalance) return;
+        
+        fetch('/api/wallet')
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    const balances = data.balances || [];
+                    const tbody = walletTable.querySelector('tbody');
+                    tbody.innerHTML = '';
+                    
+                    if (balances.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="4" class="text-center">Nenhum saldo encontrado</td></tr>';
+                        totalBalance.textContent = '0.00 USDT';
+                        return;
+                    }
+                    
+                    let totalUsdt = 0;
+                    
+                    balances.forEach(balance => {
+                        const row = document.createElement('tr');
+                        
+                        // Calcular total disponível (free + locked)
+                        const total = (parseFloat(balance.free) || 0) + (parseFloat(balance.locked) || 0);
+                        
+                        // Verificar se temos um valor USDT
+                        const usdtValue = balance.usdt_value || 0;
+                        totalUsdt += parseFloat(usdtValue);
+                        
+                        row.innerHTML = `
+                            <td>
+                                <div class="d-flex align-items-center">
+                                    <span class="coin-icon">${balance.asset?.slice(0, 1) || '?'}</span>
+                                    ${balance.asset || 'Desconhecido'}
+                                </div>
+                            </td>
+                            <td>${parseFloat(balance.free || 0).toFixed(8)}</td>
+                            <td>${parseFloat(balance.locked || 0).toFixed(8)}</td>
+                            <td>${total.toFixed(8)}</td>
+                        `;
+                        
+                        tbody.appendChild(row);
+                    });
+                    
+                    // Atualizar saldo total
+                    totalBalance.textContent = `${totalUsdt.toFixed(2)} USDT`;
+                    
+                    // Atualizar timestamp
+                    if (walletUpdatedAt) {
+                        const now = new Date();
+                        walletUpdatedAt.textContent = `Atualizado em: ${now.toLocaleTimeString()}`;
+                    }
+                } else {
+                    const tbody = walletTable.querySelector('tbody');
+                    tbody.innerHTML = `<tr><td colspan="4" class="text-center text-danger">Erro: ${data.message || 'Falha ao carregar saldos'}</td></tr>`;
+                    totalBalance.textContent = 'Erro';
+                }
+            })
+            .catch(error => {
+                console.error('Erro ao carregar carteira:', error);
+                const tbody = walletTable.querySelector('tbody');
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center text-danger">Erro ao carregar saldos</td></tr>';
+                totalBalance.textContent = 'Erro';
+            });
+    }
+
+    // Exibir mensagem de alerta
     function showAlert(type, message) {
+        if (!alerts) return;
+        
         const alert = document.createElement('div');
-        alert.className = `alert alert-${type}`;
-        alert.textContent = message;
+        alert.className = `alert alert-${type} alert-dismissible`;
+        alert.innerHTML = `
+            ${message}
+            <button type="button" class="close" data-dismiss="alert">&times;</button>
+        `;
         
         alerts.appendChild(alert);
         
-        // Remover o alerta após 5 segundos
+        // Auto-remover após 5 segundos
         setTimeout(() => {
-            alert.remove();
+            if (alert.parentNode === alerts) {
+                alerts.removeChild(alert);
+            }
         }, 5000);
-    }
-
-    // Adicionar eventos aos formulários
-    if (botForm) {
-        botForm.addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            const formData = {
-                stock_code: document.getElementById('bot-stock-code').value,
-                operation_code: document.getElementById('bot-operation-code').value,
-                traded_quantity: parseFloat(document.getElementById('bot-quantity').value),
-                volatility_factor: parseFloat(document.getElementById('bot-volatility').value),
-                stop_loss_percentage: parseFloat(document.getElementById('bot-stop-loss').value),
-                acceptable_loss_percentage: parseFloat(document.getElementById('bot-acceptable-loss').value),
-                fallback_activated: document.getElementById('bot-fallback').checked
-            };
-            
-            startBot(formData);
-        });
-    }
-
-    if (simulationForm) {
-        simulationForm.addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            const formData = {
-                stock_code: document.getElementById('sim-stock-code').value,
-                operation_code: document.getElementById('sim-operation-code').value,
-                traded_quantity: parseFloat(document.getElementById('sim-quantity').value),
-                volatility_factor: parseFloat(document.getElementById('sim-volatility').value),
-                stop_loss_percentage: parseFloat(document.getElementById('sim-stop-loss').value),
-                acceptable_loss_percentage: parseFloat(document.getElementById('sim-acceptable-loss').value),
-                fallback_activated: document.getElementById('sim-fallback').checked
-            };
-            
-            startSimulation(formData);
-        });
-    }
-
-    // Configura modal
-    const modal = document.getElementById('results-modal');
-    const close = document.querySelector('.close');
-    
-    if (close && modal) {
-        close.addEventListener('click', () => {
-            modal.style.display = 'none';
-        });
         
-        window.addEventListener('click', (e) => {
-            if (e.target == modal) {
-                modal.style.display = 'none';
+        // Adicionar evento para fechar ao clicar
+        alert.querySelector('.close').addEventListener('click', function() {
+            if (alert.parentNode === alerts) {
+                alerts.removeChild(alert);
             }
         });
     }
-    
-    // Aplica ajustes responsivos
-    handleResponsiveLayout();
-    
-    // Monitora redimensionamento da janela
-    window.addEventListener('resize', handleResponsiveLayout);
-    
-    // Carrega dados iniciais
-    fetchStatus();
-});
 
-// Função para ajustar o layout em dispositivos móveis
-function handleResponsiveLayout() {
-    const isMobile = window.innerWidth <= 768;
-    const isSmallScreen = window.innerWidth <= 480;
-    
-    // Ajusta o layout das tabelas em dispositivos móveis
-    if (isMobile) {
-        // Simplifica o cabeçalho das tabelas em telas muito pequenas
-        if (isSmallScreen) {
-            simplifyTableHeaders();
-        } else {
-            restoreTableHeaders();
+    // Inicialização de componentes específicos
+    function initComponents() {
+        // Inicializar formulário do bot
+        if (botForm) {
+            botForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const formData = {
+                    symbol: document.getElementById('bot-symbol').value,
+                    operation_mode: document.getElementById('bot-operation-mode').value,
+                    traded_quantity: parseFloat(document.getElementById('bot-quantity').value)
+                };
+                
+                startBot(formData);
+            });
         }
-    } else {
-        restoreTableHeaders();
+        
+        // Inicializar formulário de simulação
+        if (simulationForm) {
+            simulationForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const formData = {
+                    stock_code: document.getElementById('sim-stock-code').value,
+                    operation_code: document.getElementById('sim-operation-code').value,
+                    quantity: parseFloat(document.getElementById('sim-quantity').value),
+                    volatility_factor: parseFloat(document.getElementById('sim-volatility').value),
+                    stop_loss: parseFloat(document.getElementById('sim-stop-loss').value),
+                    acceptable_loss: parseFloat(document.getElementById('sim-acceptable-loss').value),
+                    fallback_activated: document.getElementById('sim-fallback').checked
+                };
+                
+                startSimulation(formData);
+            });
+        }
+        
+        // Inicializar atualização da carteira
+        const refreshWalletBtn = document.getElementById('refresh-wallet');
+        if (refreshWalletBtn) {
+            refreshWalletBtn.addEventListener('click', loadWallet);
+            // Carregar carteira inicialmente
+            loadWallet();
+        }
+        
+        // Inicializar histórico de simulações
+        const simulationHistoryPage = document.getElementById('simulation-history');
+        if (simulationHistoryPage) {
+            loadSimulationHistory();
+        }
     }
-}
 
-// Simplifica cabeçalhos de tabela em telas muito pequenas
-function simplifyTableHeaders() {
-    // Adapta a tabela de bots para telas pequenas
-    const botTable = document.getElementById('bot-table');
-    if (botTable) {
-        const headers = botTable.querySelectorAll('th');
-        if (headers.length > 0) {
-            // Usa abreviações para cabeçalhos longos
-            const headerMap = {
-                'Último Preço de Compra': 'Compra',
-                'Último Preço de Venda': 'Venda'
-            };
+    // Layout responsivo para mobile
+    function handleResponsiveLayout() {
+        const isMobile = window.innerWidth < 768;
+        const tables = document.querySelectorAll('table');
+        
+        if (isMobile) {
+            tables.forEach(simplifyTableHeaders);
+        } else {
+            tables.forEach(restoreTableHeaders);
+        }
+    }
+
+    // Simplificar cabeçalhos de tabela para mobile
+    function simplifyTableHeaders(table) {
+        if (!table.dataset.originalHeaders) {
+            // Salvar cabeçalhos originais
+            const headers = Array.from(table.querySelectorAll('th')).map(th => th.textContent);
+            table.dataset.originalHeaders = JSON.stringify(headers);
             
-            headers.forEach(header => {
-                if (headerMap[header.textContent]) {
-                    header.setAttribute('data-original', header.textContent);
-                    header.textContent = headerMap[header.textContent];
+            // Simplificar cabeçalhos
+            table.querySelectorAll('th').forEach((th, index) => {
+                if (index > 0 && index < headers.length - 1) {
+                    th.setAttribute('data-original', th.textContent);
+                    th.textContent = (index + 1).toString();
                 }
             });
         }
     }
-}
 
-// Restaura cabeçalhos originais
-function restoreTableHeaders() {
-    const tables = document.querySelectorAll('.table');
-    tables.forEach(table => {
-        const headers = table.querySelectorAll('th[data-original]');
-        headers.forEach(header => {
-            header.textContent = header.getAttribute('data-original');
-        });
-    });
-} 
+    // Restaurar cabeçalhos originais da tabela
+    function restoreTableHeaders(table) {
+        if (table.dataset.originalHeaders) {
+            const headers = JSON.parse(table.dataset.originalHeaders);
+            
+            table.querySelectorAll('th').forEach((th, index) => {
+                if (th.getAttribute('data-original')) {
+                    th.textContent = th.getAttribute('data-original');
+                }
+            });
+            
+            // Limpar dataset
+            delete table.dataset.originalHeaders;
+        }
+    }
+
+    // Inicializar
+    initComponents();
+    handleResponsiveLayout();
+    
+    // Atualizar layout responsivo ao redimensionar
+    window.addEventListener('resize', handleResponsiveLayout);
+    
+    // Buscar status inicial
+    fetchStatus();
+}); 

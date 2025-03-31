@@ -28,7 +28,9 @@
                     <span class="material-icons">account_circle</span> {{ current_user.username }}
                 </a>
                 <div class="dropdown-menu" id="dropdownMenu">
-                    <!-- Links removidos temporariamente até que os módulos sejam implementados -->
+                    <a href="{{ url_for('auth.change_password') }}" class="dropdown-item">
+                        <span class="material-icons">key</span> Alterar Senha
+                    </a>
                     <a href="{{ url_for('auth.logout') }}" class="dropdown-item">
                         <span class="material-icons">logout</span> Sair
                     </a>
