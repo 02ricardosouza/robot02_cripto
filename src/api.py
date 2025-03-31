@@ -250,16 +250,16 @@ def api_status():
                 try:
                     active_bots.append({
                         "id": bot_id,
-                        "stock_code": bot.symbol.split('/')[0] if '/' in bot.symbol else bot.symbol,
-                        "operation_code": bot.operation_mode,
+                        "stock_code": bot.stock_code,
+                        "operation_code": bot.operation_code,
                         "position": bot.last_operation == "BUY" and "Comprado" or "Vendido",
-                        "last_buy_price": bot.buy_price,
-                        "last_sell_price": bot.sell_price,
-                        "wallet_balance": bot.wallet_balance
+                        "last_buy_price": bot.last_buy_price if hasattr(bot, 'last_buy_price') else 0,
+                        "last_sell_price": bot.last_sell_price if hasattr(bot, 'last_sell_price') else 0,
+                        "wallet_balance": bot.last_stock_account_balance if hasattr(bot, 'last_stock_account_balance') else 0
                     })
                 except Exception as e:
                     logger.error(f"Erro ao obter detalhes do bot {bot_id}: {str(e)}")
-                    
+        
         return jsonify({
             "status": "ok",
             "server_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -383,12 +383,12 @@ def list_bots():
             try:
                 bot_info = {
                     "id": bot_id,
-                    "symbol": bot.symbol,
-                    "operation_mode": bot.operation_mode,
-                    "last_operation": bot.last_operation,
-                    "last_price": bot.last_price,
-                    "is_active": bot.is_active,
-                    "start_time": bot.start_time.strftime("%Y-%m-%d %H:%M:%S") if hasattr(bot, 'start_time') else None
+                    "stock_code": bot.stock_code,
+                    "operation_code": bot.operation_code,
+                    "last_operation": bot.last_operation if hasattr(bot, 'last_operation') else "NONE",
+                    "last_price": bot.last_price if hasattr(bot, 'last_price') else 0,
+                    "is_active": True,
+                    "start_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 }
                 bots_info.append(bot_info)
             except Exception as e:
@@ -768,8 +768,8 @@ def list_simulations():
                 try:
                     active_simulations.append({
                         "id": sim_id,
-                        "stock_code": bot.operation_mode,  # invertido no modo de simulação
-                        "operation_code": bot.symbol,
+                        "stock_code": bot.stock_code,
+                        "operation_code": bot.operation_code,
                         "initial_price": bot.initial_price,
                         "quantity": bot.traded_quantity
                     })
@@ -920,7 +920,7 @@ def execute_simulation(simulation_id):
             
             if api_key and api_secret and api_key != 'sua_api_key_aqui' and api_secret != 'sua_secret_key_aqui':
                 client = Client(api_key, api_secret)
-                ticker = client.get_ticker(symbol=sim_bot.symbol)
+                ticker = client.get_ticker(symbol=sim_bot.operation_code)
                 current_price = float(ticker['lastPrice'])
             else:
                 # Simular variação de preço para testes
@@ -940,11 +940,9 @@ def execute_simulation(simulation_id):
         sim_bot.last_price = current_price
         
         # Simular decisão de compra ou venda
-        current_position = sim_bot.last_operation == "BUY"  # True se comprado, False se vendido
-        
-        # Lógica simplificada para decisão
-        sim_bot.canActivateSellOrder = lambda: not current_position
-        sim_bot.canActivateBuyOrder = lambda: current_position
+        current_position = False
+        if hasattr(sim_bot, 'last_operation') and sim_bot.last_operation:
+            current_position = sim_bot.last_operation == "BUY"  # True se comprado, False se vendido
         
         # Definir uma operação de acordo com regras simples
         decision = None
@@ -969,7 +967,7 @@ def execute_simulation(simulation_id):
         # Registrar operação no histórico
         trade_id = SimulationTradeModel.register_trade(
             simulation_id=simulation_id,
-            operation_code=sim_bot.symbol,
+            operation_code=sim_bot.operation_code,
             trade_type=trade_type,
             price=current_price,
             quantity=quantity,
@@ -981,16 +979,21 @@ def execute_simulation(simulation_id):
             sim_bot.simulation_balance -= total_value
             sim_bot.simulation_stock_balance += quantity
             sim_bot.buy_price = current_price
+            # Também atualizar last_buy_price para manter consistência
+            sim_bot.last_buy_price = current_price
         else:  # SELL
             sim_bot.simulation_balance += total_value
             sim_bot.simulation_stock_balance -= quantity
             sim_bot.sell_price = current_price
+            # Também atualizar last_sell_price para manter consistência
+            sim_bot.last_sell_price = current_price
         
         # Calcular lucro/prejuízo
         profit_loss = 0
-        if hasattr(sim_bot, 'buy_price') and sim_bot.buy_price and hasattr(sim_bot, 'sell_price') and sim_bot.sell_price:
-            price_diff = sim_bot.sell_price - sim_bot.buy_price
-            profit_loss = price_diff * quantity
+        if hasattr(sim_bot, 'buy_price') and sim_bot.buy_price:
+            if hasattr(sim_bot, 'sell_price') and sim_bot.sell_price:
+                price_diff = sim_bot.sell_price - sim_bot.buy_price
+                profit_loss = price_diff * quantity
         
         return jsonify({
             'success': True,
@@ -1029,7 +1032,7 @@ def stop_simulation(simulation_id):
             
             if api_key and api_secret and api_key != 'sua_api_key_aqui' and api_secret != 'sua_secret_key_aqui':
                 client = Client(api_key, api_secret)
-                ticker = client.get_ticker(symbol=sim_bot.symbol)
+                ticker = client.get_ticker(symbol=sim_bot.operation_code)
                 current_price = float(ticker['lastPrice'])
             else:
                 # Usar preço atual armazenado ou base
@@ -1046,7 +1049,7 @@ def stop_simulation(simulation_id):
             # Registrar operação final
             SimulationTradeModel.register_trade(
                 simulation_id=simulation_id,
-                operation_code=sim_bot.symbol,
+                operation_code=sim_bot.operation_code,
                 trade_type='SELL_FINAL',
                 price=current_price,
                 quantity=quantity,
@@ -1057,6 +1060,7 @@ def stop_simulation(simulation_id):
             sim_bot.simulation_balance += total_value
             sim_bot.simulation_stock_balance = 0
             sim_bot.sell_price = current_price
+            sim_bot.last_sell_price = current_price
             sim_bot.last_operation = "SELL"
         
         # Obter todas as operações
