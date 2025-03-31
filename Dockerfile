@@ -8,17 +8,23 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Copiar o código da aplicação
-COPY . .
-
-# Tornar o script de setup executável
-RUN chmod +x setup.sh
+# Copiar apenas os requisitos primeiro
+COPY requirements.txt .
 
 # Instalar dependências Python
-RUN ./setup.sh
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Criar diretório para logs
+RUN mkdir -p src/logs
+
+# Copiar o restante do código para a pasta correta
+COPY . .
+
+# Verificar se os módulos podem ser importados
+RUN python -c "import sys; sys.path.insert(0, '/app/src'); from src.api import app; print('API importada com sucesso!')"
 
 # Expor porta
 EXPOSE 5000
 
 # Comando para iniciar a aplicação
-CMD ["gunicorn", "--workers=2", "--bind=0.0.0.0:5000", "wsgi:app"] 
+CMD ["gunicorn", "--workers=2", "--bind=0.0.0.0:5000", "--pythonpath", "/app", "run:app"] 

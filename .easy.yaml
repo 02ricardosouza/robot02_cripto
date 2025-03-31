@@ -5,7 +5,7 @@ dockerfile: Dockerfile
 port: 5000
 env:
   - name: FLASK_APP
-    value: wsgi:app
+    value: run:app
   - name: FLASK_ENV
     value: production
   - name: PORT
@@ -15,7 +15,7 @@ env:
   - name: PYTHONDONTWRITEBYTECODE
     value: "1"
   - name: PYTHONPATH
-    value: "/app"
+    value: "/app:/app/src"
 volumes:
   - name: logs
     mountPath: /app/src/logs

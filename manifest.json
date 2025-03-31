@@ -12,7 +12,7 @@
   "env": [
     {
       "name": "FLASK_APP",
-      "value": "wsgi:app"
+      "value": "run:app"
     },
     {
       "name": "FLASK_ENV",
@@ -24,7 +24,7 @@
     },
     {
       "name": "PYTHONPATH",
-      "value": "/app"
+      "value": "/app:/app/src"
     }
   ],
   "volumes": [
