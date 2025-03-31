@@ -1,0 +1,30 @@
+{
+  "dockerfile": "./Dockerfile",
+  "port": 5000,
+  "env": [
+    {
+      "name": "FLASK_APP",
+      "value": "src.run_api"
+    },
+    {
+      "name": "FLASK_ENV",
+      "value": "production"
+    },
+    {
+      "name": "PORT",
+      "value": "5000"
+    }
+  ],
+  "mounts": [
+    {
+      "type": "volume",
+      "name": "logs",
+      "mountPath": "/app/src/logs"
+    },
+    {
+      "type": "volume",
+      "name": "db",
+      "mountPath": "/app/src/database.db"
+    }
+  ]
+} 
