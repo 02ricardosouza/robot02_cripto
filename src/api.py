@@ -474,14 +474,14 @@ def start_bot():
             
             # Tudo ok, criar e iniciar o bot
             bot = BinanceTraderBot(
-                symbol=symbol,
-                operation_mode=operation_mode,
-                api_key=api_key,
-                api_secret=api_secret,
+                stock_code=operation_mode,
+                operation_code=symbol,
                 traded_quantity=traded_quantity,
+                traded_percentage=100,  # 100% do valor definido pelo usuário
+                candle_period=CANDLE_PERIOD,
                 volatility_factor=data.get('volatility_factor', VOLATILITY_FACTOR),
-                stop_loss_percentage=data.get('stop_loss', STOP_LOSS_PERCENTAGE),
                 acceptable_loss_percentage=data.get('acceptable_loss', ACCEPTABLE_LOSS_PERCENTAGE),
+                stop_loss_percentage=data.get('stop_loss', STOP_LOSS_PERCENTAGE),
                 fallback_activated=data.get('fallback_activated', FALLBACK_ACTIVATED)
             )
             
@@ -719,14 +719,14 @@ def start_simulation():
                 
             # Criar bot de simulação
             sim_bot = SimulationTraderBot(
-                symbol=operation_code,
-                operation_mode=stock_code,
-                api_key=api_key if api_key else '',
-                api_secret=api_secret if api_secret else '',
+                stock_code=stock_code,
+                operation_code=operation_code,
                 traded_quantity=quantity,
+                traded_percentage=100,  # 100% do valor definido pelo usuário
+                candle_period=CANDLE_PERIOD,
                 volatility_factor=volatility_factor,
-                stop_loss_percentage=stop_loss,
                 acceptable_loss_percentage=acceptable_loss,
+                stop_loss_percentage=stop_loss,
                 fallback_activated=fallback_activated
             )
             
