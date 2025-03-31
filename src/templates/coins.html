@@ -276,7 +276,8 @@
         const tbody = coinsTable.querySelector('tbody');
         tbody.innerHTML = '';
         
-        if (coins.length === 0) {
+        // Verificar se coins é um array e tem elementos
+        if (!coins || !Array.isArray(coins) || coins.length === 0) {
             tbody.innerHTML = '<tr><td colspan="6" class="text-center">Nenhuma moeda cadastrada</td></tr>';
             return;
         }

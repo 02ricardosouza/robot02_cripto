@@ -6,12 +6,13 @@ Este módulo deve ser importado pelo run.py.
 
 import os
 import sys
+import sqlite3
 import logging
 import threading
 import time
 import json
 from datetime import datetime
-from flask import Blueprint, request, jsonify, render_template, redirect, url_for
+from flask import Blueprint, request, jsonify, render_template, redirect, url_for, Response
 from flask_login import login_required, current_user
 from binance.client import Client
 from binance.exceptions import BinanceAPIException
@@ -511,6 +512,23 @@ def delete_coin(coin_id):
     return jsonify({'success': False, 'error': 'Erro ao excluir moeda'}), 500
 
 # Endpoints para histórico de simulações
+@api_bp.route('/api/simulation/list', methods=['GET'])
+@login_required
+def list_simulations():
+    try:
+        # Como não temos um armazenamento específico para simulações ativas,
+        # vamos retornar todas as simulações disponíveis
+        simulations = SimulationTradeModel.get_all_simulations()
+        
+        return jsonify({
+            'success': True,
+            'simulations': simulations
+        })
+        
+    except Exception as e:
+        logger.error(f"Erro ao listar simulações: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @api_bp.route('/api/simulation/history/list', methods=['GET'])
 @login_required
 def list_simulation_history():
@@ -560,6 +578,22 @@ def get_simulation_history(simulation_id):
     except Exception as e:
         logger.error(f"Erro ao obter histórico da simulação {simulation_id}: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+# Endpoint para logs em tempo real
+@api_bp.route('/api/logs/stream')
+@login_required
+def logs_stream():
+    def generate():
+        # Cabeçalhos necessários para SSE (Server-Sent Events)
+        yield "retry: 10000\n"
+        
+        # Enviar heartbeat para manter a conexão ativa
+        while True:
+            timestamp = datetime.datetime.now().isoformat()
+            yield f"data: {{\"type\": \"heartbeat\", \"message\": \"Conexão ativa\", \"timestamp\": \"{timestamp}\"}}\n\n"
+            time.sleep(10)  # Heartbeat a cada 10 segundos
+            
+    return Response(generate(), mimetype='text/event-stream')
 
 # Função para inicializar o modelo de dados
 def init_models():

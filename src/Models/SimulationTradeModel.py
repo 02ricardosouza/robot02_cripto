@@ -178,33 +178,26 @@ class SimulationTradeModel:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             
-            # Obter todos os IDs de simulação únicos
+            # Obter todos os IDs de simulação únicos sem usar funções de agregação
             cursor.execute('''
             SELECT DISTINCT simulation_id 
-            FROM simulation_trades 
-            ORDER BY MIN(timestamp) DESC
+            FROM simulation_trades
             ''')
             
-            # Se a consulta acima falhar, tente uma abordagem alternativa
-            if cursor.rowcount == 0:
-                cursor.execute('''
-                SELECT DISTINCT simulation_id 
-                FROM simulation_trades
-                ''')
-                
-                simulation_ids = [row[0] for row in cursor.fetchall()]
-                
-                # Ordenar manualmente por timestamp
+            simulation_ids = [row[0] for row in cursor.fetchall()]
+            
+            # Se precisarmos ordenar, podemos fazer isso em uma etapa separada
+            if simulation_ids:
+                # Consulta separada para obter a primeira timestamp de cada simulação
                 cursor.execute('''
                 SELECT simulation_id, MIN(timestamp) as first_timestamp
                 FROM simulation_trades
                 GROUP BY simulation_id
                 ''')
                 
-                timestamp_map = {row[0]: row[1] for row in cursor.fetchall()}
+                timestamp_map = {row['simulation_id']: row['first_timestamp'] for row in cursor.fetchall()}
+                # Ordenar IDs com base nos timestamps (do mais recente para o mais antigo)
                 simulation_ids.sort(key=lambda sim_id: timestamp_map.get(sim_id, ''), reverse=True)
-            else:
-                simulation_ids = [row[0] for row in cursor.fetchall()]
             
             conn.close()
             
