@@ -12,7 +12,7 @@
   "env": [
     {
       "name": "FLASK_APP",
-      "value": "run:app"
+      "value": "app:app"
     },
     {
       "name": "FLASK_ENV",

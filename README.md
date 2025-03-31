@@ -1,3 +1,65 @@
+# Robô de Trading de Criptomoedas
+
+## Visão Geral
+Este é um robô automatizado para trading de criptomoedas usando a API da Binance.
+
+## Configuração do Ambiente
+
+### Requisitos
+- Python 3.9
+- Conta na Binance com API Key e Secret Key
+
+### Variáveis de Ambiente
+Crie um arquivo `.env` na raiz do projeto com as seguintes variáveis:
+```
+FLASK_APP=app:app
+FLASK_ENV=production
+PORT=5000
+BINANCE_API_KEY=sua_api_key_aqui
+BINANCE_SECRET_KEY=sua_secret_key_aqui
+```
+
+## Instalação
+
+### Local
+```bash
+# Instalar dependências
+pip install -r requirements.txt
+
+# Iniciar a aplicação
+python app.py
+```
+
+### Docker
+```bash
+# Construir a imagem
+docker build -t robo-cripto .
+
+# Executar o container
+docker run -p 5000:5000 --env-file .env robo-cripto
+```
+
+## Deploy no EasyPanel
+1. Faça o fork deste repositório
+2. No EasyPanel, crie um novo serviço usando o repositório
+3. Configure as variáveis de ambiente necessárias
+4. Inicie o deploy
+
+## Estrutura do Projeto
+- `app.py`: Arquivo principal da aplicação
+- `src/`: Diretório com os módulos do projeto
+  - `api.py`: API Flask para interação com o robô
+  - `modules/`: Módulos do robô de trading
+  - `strategies/`: Estratégias de trading
+  - `indicators/`: Indicadores técnicos
+  - `Models/`: Modelos de dados
+  - `auth/`: Sistema de autenticação
+  - `templates/`: Templates HTML
+  - `static/`: Arquivos estáticos (CSS, JS, imagens)
+
+## Licença
+Este projeto é distribuído sob licença privada.
+
 # PARA DÚVIDAS E SUGESTÕES, PARTICIPE DO NOSSO DISCORD
 
     https://discord.gg/PpmB3DwSSX

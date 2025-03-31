@@ -5,7 +5,7 @@ dockerfile: Dockerfile
 port: 5000
 env:
   - name: FLASK_APP
-    value: run:app
+    value: app:app
   - name: FLASK_ENV
     value: production
   - name: PORT

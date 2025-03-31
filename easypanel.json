@@ -1,6 +1,6 @@
 {
   "builder": "dockerfile",
-  "startCommand": "gunicorn --workers=2 --bind=0.0.0.0:$PORT --pythonpath /app:/app/src run:app",
+  "startCommand": "gunicorn --workers=2 --bind=0.0.0.0:$PORT app:app",
   "portMapping": "5000:5000",
   "mountPath": [
     {
@@ -15,7 +15,7 @@
   "env": [
     {
       "name": "FLASK_APP",
-      "value": "run:app"
+      "value": "app:app"
     },
     {
       "name": "FLASK_ENV",

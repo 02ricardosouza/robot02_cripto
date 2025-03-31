@@ -20,11 +20,11 @@ RUN mkdir -p src/logs
 # Copiar o restante do código para a pasta correta
 COPY . .
 
-# Verificar se os módulos podem ser importados
-RUN python -c "import sys; sys.path.insert(0, '/app/src'); from src.api import app; print('API importada com sucesso!')"
+# Tornar os scripts executáveis
+RUN chmod +x app.py entrypoint.sh
 
 # Expor porta
 EXPOSE 5000
 
 # Comando para iniciar a aplicação
-CMD ["gunicorn", "--workers=2", "--bind=0.0.0.0:5000", "--pythonpath", "/app", "run:app"] 
+CMD ["./entrypoint.sh"] 
