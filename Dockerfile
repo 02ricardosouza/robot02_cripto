@@ -20,8 +20,14 @@ RUN mkdir -p src/logs
 # Copiar todos os arquivos
 COPY . .
 
-# Adicionar um script para verificar a estrutura de diretórios no contêiner
-RUN echo '#!/bin/bash\necho "📂 Estrutura de diretórios:"\nls -la\necho "📂 Conteúdo da pasta src:"\nls -la src/\necho "🔍 Python path:"\npython -c "import sys; print(sys.path)"\necho "🚀 Iniciando aplicação..."\necho "🧨 Verificando rotas..."\npython -c "from flask import Flask; app = Flask(__name__); from src.auth import init_auth; init_auth(app); print(\"Rotas no app após init_auth:\", [rule.endpoint for rule in app.url_map.iter_rules()])"\nexec python api.py' > start.sh && \
+# Verificar se o arquivo .env existe e imprimir uma mensagem se não existir
+RUN if [ ! -f .env ]; then \
+    echo "AVISO: Arquivo .env não encontrado. Configure-o antes de executar o container."; \
+    echo "FLASK_ENV=production\nFLASK_APP=src.run_api\nPYTHONUNBUFFERED=1\nPYTHONDONTWRITEBYTECODE=1" > .env; \
+    fi
+
+# Adicionar um script para verificar a estrutura de diretórios e iniciar a aplicação
+RUN echo '#!/bin/bash\necho "📂 Estrutura de diretórios:"\nls -la\necho "📂 Conteúdo da pasta src:"\nls -la src/\necho "🔍 Python path:"\npython -c "import sys; print(sys.path)"\necho "🔑 Verificando variáveis de ambiente da Binance:"\nif grep -q "BINANCE_API_KEY=sua_api_key_aqui" .env; then\n  echo "⚠️ AVISO: As chaves da API da Binance não foram configuradas no arquivo .env"\n  echo "⚠️ Por favor, atualize o arquivo .env com suas chaves reais da Binance"\nelse\n  echo "✅ Arquivo .env configurado corretamente"\nfi\necho "🚀 Iniciando aplicação..."\nexec python api.py' > start.sh && \
     chmod +x start.sh
 
 # Expor porta

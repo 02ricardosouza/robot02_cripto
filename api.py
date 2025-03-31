@@ -24,10 +24,6 @@ logging.basicConfig(
 )
 
 try:
-    # Lógica para evitar conflitos de rota
-    # Em vez de definir as rotas diretamente, vamos simplesmente usar a versão
-    # que já existe no módulo auth
-    
     # Importações básicas
     from flask import Flask, request, jsonify, send_from_directory, Response
     from flask import stream_with_context, render_template, redirect, url_for
@@ -42,6 +38,7 @@ try:
     import decimal
     import sqlite3
     from binance.client import Client
+    from binance.exceptions import BinanceAPIException
     
     # Carrega as variáveis de ambiente
     load_dotenv()
@@ -68,105 +65,107 @@ try:
     app.config['REMEMBER_COOKIE_SECURE'] = os.environ.get('ENV') == 'production'
     app.config['REMEMBER_COOKIE_HTTPONLY'] = True
     
-    # ===== IMPORTANTE =====
-    # CORRIGIR PROBLEMA DE CONFLITO DE ROTAS
-    # Em vez de definir as funções aqui, vamos obter as do módulo src.auth
-    # =====================
+    print("Carregando arquivo src/api.py para importar funcionalidades...")
     
-    # Importações específicas do projeto
-    from src.auth import init_auth
-    from src.Models.AssetStartModel import AssetStartModel
-    from src.Models.CoinModel import CoinModel
-    from src.Models.SimulationTradeModel import SimulationTradeModel
-    from src.modules.BinanceRobot import BinanceTraderBot
+    # Este método evita que tenhamos que reimplementar todas as rotas
+    # Importa o código de src/api.py, mas substitui a variável 'app' pelo nosso app
+    with open(os.path.join(src_dir, 'api.py'), 'r') as f:
+        src_api_code = f.read()
+        
+    # Remova a criação da aplicação Flask no src/api.py
+    src_api_code = src_api_code.replace("app = Flask(__name__", 
+                                      "# app já definido acima #")
     
-    # Inicializa o sistema de autenticação - ISSO REGISTRA AS ROTAS
-    print("Inicializando autenticação...")
-    init_auth(app)  # Este módulo provavelmente já define a rota index
+    # Remova a inicialização do CORS
+    src_api_code = src_api_code.replace("CORS(app)", 
+                                      "# CORS já habilitado acima #")
+    
+    print("Executando o código modificado de src/api.py...")
+    # Executa o código modificado com o 'app' já definido
+    exec(src_api_code)
     
     # Verificar todas as rotas registradas
-    print("Rotas registradas após init_auth:")
+    print("Rotas registradas na aplicação:")
     for rule in app.url_map.iter_rules():
         print(f"Rota: {rule.endpoint} -> {rule.rule}")
     
-    # Inicializa o modelo de moedas
-    print("Inicializando modelo de moedas...")
-    CoinModel.init_db()
+    # Rota para a página de diagnóstico
+    @app.route('/diagnostico-page')
+    def diagnostico_page():
+        return render_template('diagnostico.html')
     
-    # Inicializa o modelo de simulações
-    print("Inicializando modelo de simulações...")
-    SimulationTradeModel.init_db()
-    
-    # Dicionário para armazenar as instâncias do robô em execução
-    running_bots = {}
-    # Dicionário para armazenar as instâncias de simulação
-    simulation_bots = {}
-    # Lock para acesso seguro ao dicionário de robôs
-    bots_lock = threading.Lock()
-    
-    # Lista de mensagens de log para streaming
-    log_messages = []
-    log_lock = threading.Lock()
-    
-    # Função para adicionar log
-    def add_log_message(message, type="info"):
-        with log_lock:
-            timestamp = datetime.datetime.now()
-            log_messages.append({
-                "message": message,
-                "timestamp": timestamp.timestamp() * 1000,
-                "type": type
-            })
-            # Manter apenas as últimas 100 mensagens
-            if len(log_messages) > 100:
-                log_messages.pop(0)
-            logging.info(message)
-    
-    # Classe para simulação que herda de BinanceTraderBot
-    class SimulationTraderBot(BinanceTraderBot):
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-            self.simulation_mode = True
-            self.simulation_trades = []
-            self.simulation_balance = 0
-            self.simulation_stock_balance = 0
-            self.initial_price = 0
-            
-        # Métodos simplificados
-        def buyMarketOrder(self):
-            return True
-            
-        def sellMarketOrder(self):
-            return True
-            
-        def buyLimitedOrder(self, price=0):
-            return True
-        
-        def sellLimitedOrder(self, price=0):
-            return True
-        
-        def getActualTradePosition(self):
-            return False
-    
-    # Rota de saúde - sempre adicionar após init_auth
-    @app.route('/health')
-    def health():
+    # Rota de diagnóstico adicionada no final
+    @app.route('/diagnostico')
+    def diagnostico():
         # Informar hora atual
         now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Verificar chaves da Binance
+        api_key = os.environ.get('BINANCE_API_KEY', 'NÃO DEFINIDA')
+        api_secret = os.environ.get('BINANCE_SECRET_KEY', 'NÃO DEFINIDA')
+        
+        # Verificar se as chaves estão presentes (truncando para segurança)
+        api_key_status = f"{api_key[:4]}...{api_key[-4:]}" if len(api_key) > 8 else "NÃO DEFINIDA"
+        api_secret_status = f"{api_secret[:4]}...{api_secret[-4:]}" if len(api_secret) > 8 else "NÃO DEFINIDA"
+        
         return jsonify({
             "status": "ok", 
-            "message": "API está funcionando corretamente",
+            "message": "Diagnóstico do sistema",
             "timestamp": now,
             "python_version": sys.version,
-            "total_routes": len(list(app.url_map.iter_rules()))
+            "total_routes": len(list(app.url_map.iter_rules())),
+            "binance_api_key": api_key_status,
+            "binance_secret_key": api_secret_status,
+            "env_vars": list(os.environ.keys())
         })
     
-    # Rota de status para uso sem autenticação
-    @app.route('/status')
-    def status():
-        # Informar hora atual
-        now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        return f"API do Robô de Trading está funcionando! ({now})"
+    # Rota para testar a conexão com a Binance
+    @app.route('/test_binance')
+    def test_binance():
+        api_key = os.environ.get('BINANCE_API_KEY')
+        api_secret = os.environ.get('BINANCE_SECRET_KEY')
+        
+        # Verificar se as chaves estão definidas
+        if not api_key or api_key == 'sua_api_key_aqui' or not api_secret or api_secret == 'sua_secret_key_aqui':
+            return jsonify({
+                "success": False,
+                "message": "Chaves da API Binance não configuradas corretamente no arquivo .env"
+            })
+        
+        try:
+            # Tentar criar um cliente Binance
+            client = Client(api_key, api_secret)
+            
+            # Verificar a conexão obtendo informações da conta
+            status = client.get_system_status()
+            account = client.get_account()
+            
+            # Construir mensagem de resposta
+            message = f"Status do sistema: {status['msg']} | "
+            message += f"Permissão para operar: {'Sim' if account['canTrade'] else 'Não'}"
+            
+            # Obter saldos não-zero
+            balances = [f"{asset['asset']}: {asset['free']}" for asset in account['balances'] 
+                       if float(asset['free']) > 0]
+            
+            return jsonify({
+                "success": True,
+                "message": message,
+                "balances": balances[:5]  # Limitar a 5 moedas
+            })
+        
+        except BinanceAPIException as e:
+            return jsonify({
+                "success": False,
+                "message": f"Erro na API da Binance: {e.message} (Código: {e.code})",
+                "error_code": e.code
+            })
+        
+        except Exception as e:
+            return jsonify({
+                "success": False,
+                "message": f"Erro desconhecido: {str(e)}"
+            })
     
     # Iniciar o servidor Flask diretamente
     if __name__ == '__main__':
