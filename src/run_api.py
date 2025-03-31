@@ -1,51 +1,35 @@
+#!/usr/bin/env python3
+"""
+Este arquivo serve apenas como um wrapper para manter a compatibilidade.
+Ele importa e executa o código de run.py, que é a nova implementação
+sem problemas de indentação.
+"""
+
 import os
 import sys
-from pathlib import Path
 
-# Verifica se a pasta de logs existe, caso contrário, cria
-logs_dir = Path('src/logs')
-if not logs_dir.exists():
-    logs_dir.mkdir(parents=True, exist_ok=True)
+# Obter o caminho da raiz do projeto
+current_dir = os.path.dirname(os.path.abspath(__file__))
+root_dir = os.path.dirname(current_dir)
 
-# Importa e executa a API
-try:
-    from api import app
-    from flask import render_template, redirect, url_for
-    from flask_login import login_required, current_user
-    
-    # Adiciona rota para renderizar a interface web
-    @app.route('/')
-    @login_required
-    def index():
-        return render_template('index.html')
+# Caminho para o arquivo run.py na raiz do projeto
+run_py_path = os.path.join(root_dir, 'run.py')
 
-    # Adiciona rota para a página de logs em tempo real
-    @app.route('/logs')
-    @login_required
-    def logs_page():
-        return render_template('logs.html')
-    
-    # Adiciona rota para a página de gerenciamento de moedas
-    @app.route('/coins')
-    @login_required
-    def coins_page():
-        # Apenas administradores podem gerenciar moedas
-        if not current_user.is_admin:
-            return redirect(url_for('index'))
-        return render_template('coins.html')
-    
-    # Rota raiz redireciona para login se não estiver autenticado
-    @app.route('/home')
-    def home():
-        if current_user.is_authenticated:
-            return redirect(url_for('index'))
-        return redirect(url_for('auth.login'))
-    
-    if __name__ == '__main__':
-        print("🤖 API e Interface do Robô de Criptomoedas iniciando...")
-        print("🌐 Acesse http://localhost:5001 para abrir a interface")
-        print("📊 Acesse http://localhost:5001/logs para ver os logs em tempo real")
-        app.run(debug=True, host='0.0.0.0', port=5001)
-except Exception as e:
-    print(f"Erro ao iniciar API: {str(e)}")
-    sys.exit(1) 
+# Verificar se run.py existe
+if not os.path.isfile(run_py_path):
+    print(f"ERRO CRÍTICO: O arquivo run.py não foi encontrado em: {run_py_path}")
+    print("Certifique-se de que o arquivo run.py está presente na raiz do projeto")
+    sys.exit(1)
+
+# Imprimir informações de diagnóstico
+print(f"Current directory: {current_dir}")
+print(f"Root directory: {root_dir}")
+print(f"run.py path: {run_py_path}")
+print(f"Python version: {sys.version}")
+print(f"Python path: {sys.path}")
+
+# Executar o run.py
+print("Redirecionando para run.py para evitar problemas de indentação...")
+sys.path.insert(0, root_dir)  # Adicionar a raiz ao path do Python
+os.chdir(root_dir)  # Mudar para o diretório raiz
+exec(open(run_py_path).read()) 

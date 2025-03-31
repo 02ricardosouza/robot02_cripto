@@ -1,123 +1,135 @@
-# Robô de Trading para Binance
+# Robô Cripto
 
-Este projeto implementa um robô de trading automatizado para a corretora Binance, permitindo operações de compra e venda de criptomoedas baseadas em estratégias predefinidas.
-
-## Resolução de Problema de Indentação
-
-Foi resolvido um problema de indentação no código que causava o erro:
-```
-IndentationError: unexpected indent (<string>, line 33)
-```
-
-A solução foi criar um novo arquivo `run.py` que implementa todas as rotas diretamente, sem usar o comando `exec()` para importar o código de `src/api.py`. Essa abordagem evita problemas de indentação que ocorrem quando se tenta executar código dinâmico com `exec()`.
+Sistema automatizado para negociação de criptomoedas utilizando a API da Binance.
 
 ## Requisitos
 
 - Python 3.9 ou superior
+- Pip (gerenciador de pacotes Python)
 - Conta na Binance com chaves de API configuradas
 
-## Configuração
+## Configuração Inicial
 
 1. Clone este repositório:
-```
-git clone https://github.com/seu-usuario/robo_cripto_02.git
-cd robo_cripto_02
-```
+   ```
+   git clone https://github.com/seu-usuario/robo_cripto_02.git
+   cd robo_cripto_02
+   ```
 
 2. Instale as dependências:
-```
-pip install -r requirements.txt
-```
-
-3. Configure as variáveis de ambiente:
-   
-   Crie um arquivo `.env` na raiz do projeto com o seguinte conteúdo:
    ```
-   FLASK_ENV=production
-   FLASK_APP=run.py
+   pip install -r requirements.txt
+   ```
+
+3. Configure o arquivo `.env` na raiz do projeto:
+   ```
+   FLASK_ENV=development
+   FLASK_APP=src.run_api
    PYTHONUNBUFFERED=1
    PYTHONDONTWRITEBYTECODE=1
-   SECRET_KEY=sua_chave_secreta_aqui
+   SECRET_KEY=chave_secreta_para_flask
    BINANCE_API_KEY=sua_api_key_aqui
    BINANCE_SECRET_KEY=sua_secret_key_aqui
    ```
 
-   **IMPORTANTE**: Substitua `sua_api_key_aqui` e `sua_secret_key_aqui` pelas suas chaves reais da Binance.
+4. Crie a pasta de logs:
+   ```
+   mkdir -p src/logs
+   ```
 
-### Obtendo chaves da API da Binance
+## Executando a Aplicação
 
-1. Acesse sua conta na Binance (https://www.binance.com)
-2. Vá para "Gerenciamento de Conta" > "API Management"
-3. Clique em "Create API" e siga as instruções de segurança
-4. Configure as restrições de IP se necessário (recomendado)
-5. Habilite as permissões "Enable Reading" e "Enable Spot & Margin Trading"
-6. Copie a API Key e a Secret Key para o arquivo `.env`
+### Método 1: Usando run.py (Recomendado)
 
-## Execução Local
-
-Para iniciar a aplicação localmente:
-
+Execute o script principal:
 ```
 python run.py
 ```
 
-Acesse a interface web em: http://localhost:5000
+### Método 2: Usando o script iniciar.sh
+
+No Linux ou macOS:
+```
+bash iniciar.sh
+```
+
+### Método 3: Usando Docker
+
+1. Construa a imagem Docker:
+   ```
+   docker build -t robo_cripto .
+   ```
+
+2. Execute o container:
+   ```
+   docker run -p 5000:5000 robo_cripto
+   ```
 
 ## Diagnóstico
 
-Para verificar se tudo está configurado corretamente, acesse:
+Se você estiver enfrentando problemas, execute o script de diagnóstico:
 
-- http://localhost:5000/diagnostico-page - Interface web para diagnóstico
-- http://localhost:5000/diagnostico - Informações em formato JSON
-- http://localhost:5000/test_binance - Teste da conexão com a Binance
-
-## Implantação no Docker
-
-1. Construa a imagem Docker:
 ```
-docker build -t robo-trading .
+python diagnostico.py
 ```
 
-2. Execute o container:
+Este script verificará:
+- Versão do Python
+- Variáveis de ambiente
+- Arquivos necessários
+- Estrutura de diretórios
+- Configuração das chaves da Binance
+
+## Estrutura do Projeto
+
 ```
-docker run -p 5000:5000 --env-file .env robo-trading
+robo_cripto_02/
+├── .env                     # Variáveis de ambiente
+├── run.py                   # Script principal para iniciar a aplicação
+├── api.py                   # Wrapper para executar run.py
+├── diagnostico.py           # Script de diagnóstico do ambiente
+├── iniciar.sh               # Script de inicialização para Linux/macOS
+├── Dockerfile               # Configuração para Docker
+├── requirements.txt         # Dependências Python
+├── Procfile                 # Configuração para deploy
+└── src/                     # Código-fonte principal
+    ├── auth/                # Autenticação e rotas
+    ├── crypto/              # Integração com criptomoedas
+    ├── indicators/          # Indicadores técnicos
+    ├── Models/              # Modelos de dados
+    ├── modules/             # Módulos auxiliares
+    ├── strategies/          # Estratégias de negociação
+    ├── static/              # Arquivos estáticos
+    ├── templates/           # Templates HTML
+    ├── user/                # Gerenciamento de usuários
+    └── logs/                # Logs da aplicação
 ```
 
-## Implantação no EasyPanel
+## Resolução de Problemas Comuns
 
-1. Adicione todos os arquivos ao repositório Git (incluindo os arquivos run.py e start.sh atualizados)
-2. Configure o EasyPanel para usar o seu repositório
-3. Configure as variáveis de ambiente (especialmente as chaves da Binance)
-4. Defina a porta externa 5000
-5. Configure o volume persistente para o banco de dados
+### 1. Erro ao conectar com a API da Binance
 
-## Logs e Monitoramento
+Verifique:
+- Se suas chaves de API estão configuradas corretamente no arquivo `.env`
+- Se as permissões das chaves incluem "Leitura" e "Trading" na plataforma da Binance
+- Se sua conexão com a internet está funcionando
 
-- Os logs da aplicação são armazenados em `src/logs/api.log`
-- A página de diagnóstico fornece informações em tempo real sobre a conexão com a Binance
+### 2. Erro ao iniciar a aplicação
 
-## Solução de Problemas
+Verifique:
+- Se o arquivo `run.py` existe na raiz do projeto
+- Se todas as dependências foram instaladas corretamente
+- Execute o script de diagnóstico para identificar o problema
 
-Se você encontrar problemas com a comunicação com a Binance:
+### 3. Problemas com Docker
 
-1. Verifique se as chaves da API estão corretas no arquivo `.env` (certifique-se de que não há espaços ou aspas extras)
-2. Acesse a página de diagnóstico em `/diagnostico-page`
-3. Clique em "Testar conexão" para verificar a comunicação com a Binance
-4. Verifique os logs em `src/logs/api.log` para mais detalhes
+Se o container não iniciar corretamente:
+- Verifique os logs do Docker: `docker logs [container_id]`
+- Certifique-se de que o Dockerfile está correto
+- Verifique se as portas estão mapeadas corretamente
 
-Se você continuar enfrentando problemas, tente executar o script de verificação:
-```
-python src/check_binance.py
-```
+## Contato e Suporte
 
-## Arquivos Principais
-
-- `run.py` - Arquivo de entrada principal da aplicação
-- `Dockerfile` - Configuração para construir a imagem Docker
-- `start.sh` - Script de inicialização usado pelo Docker
-- `src/` - Diretório com os módulos do projeto
-- `.env` - Variáveis de ambiente (criar manualmente)
-
-## Suporte
-
-Para suporte ou dúvidas, entre em contato através das issues do GitHub ou pelo email: [seu-email@exemplo.com]
+Para suporte ou mais informações, entre em contato:
+- Email: seu-email@exemplo.com
+- GitHub: https://github.com/seu-usuario
