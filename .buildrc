@@ -1,0 +1,5 @@
+#!/bin/bash
+# Força o uso do Dockerfile em vez do Nixpacks
+export USE_DOCKERFILE=true
+export DOCKER_BUILDKIT=1
+export BUILDKIT_PROGRESS=plain 
