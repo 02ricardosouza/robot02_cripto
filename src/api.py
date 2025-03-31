@@ -409,10 +409,12 @@ def list_bots():
 def start_bot():
     try:
         data = request.get_json()
+        logger.info(f"Iniciando bot com dados: {data}")
         
         required_fields = ['symbol', 'operation_mode', 'traded_quantity']
         for field in required_fields:
             if field not in data:
+                logger.error(f"Campo obrigatório ausente: {field}")
                 return jsonify({
                     "success": False,
                     "error": f"Campo obrigatório ausente: {field}"
@@ -421,6 +423,8 @@ def start_bot():
         symbol = data['symbol']
         operation_mode = data['operation_mode']
         traded_quantity = float(data['traded_quantity'])
+        
+        logger.info(f"Iniciando bot para symbol={symbol}, operation_mode={operation_mode}, traded_quantity={traded_quantity}")
         
         # Gerar ID para o robô
         bot_id = f"{symbol}_{operation_mode}_{int(time.time())}"
@@ -473,34 +477,79 @@ def start_bot():
                 }), 400
             
             # Tudo ok, criar e iniciar o bot
-            bot = BinanceTraderBot(
-                stock_code=operation_mode,
-                operation_code=symbol,
-                traded_quantity=traded_quantity,
-                traded_percentage=100,  # 100% do valor definido pelo usuário
-                candle_period=CANDLE_PERIOD,
-                volatility_factor=data.get('volatility_factor', VOLATILITY_FACTOR),
-                acceptable_loss_percentage=data.get('acceptable_loss', ACCEPTABLE_LOSS_PERCENTAGE),
-                stop_loss_percentage=data.get('stop_loss', STOP_LOSS_PERCENTAGE),
-                fallback_activated=data.get('fallback_activated', FALLBACK_ACTIVATED)
-            )
+            try:
+                bot = BinanceTraderBot(
+                    stock_code=operation_mode,
+                    operation_code=symbol,
+                    traded_quantity=traded_quantity,
+                    traded_percentage=100,  # 100% do valor definido pelo usuário
+                    candle_period=CANDLE_PERIOD,
+                    volatility_factor=data.get('volatility_factor', VOLATILITY_FACTOR),
+                    acceptable_loss_percentage=data.get('acceptable_loss', ACCEPTABLE_LOSS_PERCENTAGE),
+                    stop_loss_percentage=data.get('stop_loss', STOP_LOSS_PERCENTAGE),
+                    fallback_activated=data.get('fallback_activated', FALLBACK_ACTIVATED)
+                )
+                
+                # Verificar se o bot foi criado corretamente
+                if not bot:
+                    logger.error("Falha ao instanciar BinanceTraderBot - retorno None")
+                    return jsonify({
+                        "success": False,
+                        "error": "Falha ao criar o bot trader. Verifique os logs para mais detalhes.",
+                        "code": "bot_creation_failed"
+                    }), 500
+                
+                # Verificar se o bot tem os atributos necessários
+                required_attrs = ['stock_code', 'operation_code', 'traded_quantity']
+                missing_attrs = []
+                for attr in required_attrs:
+                    if not hasattr(bot, attr):
+                        missing_attrs.append(attr)
+                
+                if missing_attrs:
+                    logger.error(f"Bot criado com atributos ausentes: {missing_attrs}")
+                    return jsonify({
+                        "success": False,
+                        "error": f"Bot criado com propriedades ausentes: {', '.join(missing_attrs)}",
+                        "code": "invalid_bot_instance"
+                    }), 500
+                
+                # Adicionar bot à lista de robôs em execução
+                with bots_lock:
+                    running_bots[bot_id] = bot
+                
+                # Verificar se o bot tem o método run
+                if not hasattr(bot, 'run'):
+                    logger.error("Bot não possui método 'run'")
+                    return jsonify({
+                        "success": False,
+                        "error": "O bot não possui método de execução",
+                        "code": "invalid_bot_method"
+                    }), 500
             
-            # Adicionar bot à lista de robôs em execução
-            with bots_lock:
-                running_bots[bot_id] = bot
-            
-            # Iniciar a thread do robô
-            bot_thread = threading.Thread(target=bot.run)
-            bot_thread.daemon = True
-            bot_thread.start()
-            
-            add_log_message(f"Bot iniciado para {symbol} com modo {operation_mode}", "success")
-            
-            return jsonify({
-                "success": True,
-                "message": f"Robô iniciado com sucesso para {symbol}",
-                "bot_id": bot_id
-            })
+                # Iniciar a thread do robô
+                bot_thread = threading.Thread(target=bot.run)
+                bot_thread.daemon = True
+                bot_thread.start()
+                
+                add_log_message(f"Bot iniciado para {symbol} com modo {operation_mode}", "success")
+                
+                return jsonify({
+                    "success": True,
+                    "message": f"Robô iniciado com sucesso para {symbol}",
+                    "bot_id": bot_id
+                })
+            except Exception as e:
+                error_msg = f"Erro ao criar ou iniciar bot: {str(e)}"
+                logger.error(error_msg)
+                # Registrar o traceback completo
+                import traceback
+                logger.error(traceback.format_exc())
+                return jsonify({
+                    "success": False,
+                    "error": error_msg,
+                    "code": "bot_start_exception"
+                }), 500
             
         except BinanceAPIException as e:
             error_msg = f"Erro da API Binance: {e.message}"
