@@ -21,4 +21,4 @@ RUN ./setup.sh
 EXPOSE 5000
 
 # Comando para iniciar a aplicação
-CMD ["gunicorn", "--workers=2", "--bind=0.0.0.0:5000", "src.run_api:app"] 
+CMD ["gunicorn", "--workers=2", "--bind=0.0.0.0:5000", "wsgi:app"] 
