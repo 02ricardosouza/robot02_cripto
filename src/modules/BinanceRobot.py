@@ -50,7 +50,19 @@ class BinanceTraderBot():
     def __init__ (self, stock_code, operation_code, traded_quantity, traded_percentage, candle_period, volatility_factor = 0.5, time_to_trade = 30*60, delay_after_order = 60*60, acceptable_loss_percentage = 0.5, stop_loss_percentage = 5, fallback_activated = True):
 
         print('------------------------------------------------')
-        print('🤖 Robo Trader iniciando...')
+        print(f'🤖 Robo Trader iniciando para {stock_code}/{operation_code}...')
+        print(f'Parâmetros recebidos:')
+        print(f'- stock_code: {stock_code}')
+        print(f'- operation_code: {operation_code}')
+        print(f'- traded_quantity: {traded_quantity}')
+        print(f'- traded_percentage: {traded_percentage}')
+        print(f'- candle_period: {candle_period}')
+        print(f'- volatility_factor: {volatility_factor}')
+        print(f'- time_to_trade: {time_to_trade}')
+        print(f'- delay_after_order: {delay_after_order}')
+        print(f'- acceptable_loss_percentage: {acceptable_loss_percentage}')
+        print(f'- stop_loss_percentage: {stop_loss_percentage}')
+        print(f'- fallback_activated: {fallback_activated}')
 
         self.stock_code = stock_code # Código princial da stock negociada (ex: 'BTC')
         self.operation_code = operation_code # Código negociado/moeda (ex:'BTCBRL')
@@ -68,11 +80,23 @@ class BinanceTraderBot():
         self.delay_after_order = delay_after_order
         self.time_to_sleep = time_to_trade
 
-        self.client_binance = BinanceClient(api_key, secret_key, sync=True, sync_interval=30000, verbose=True) # Inicia o client da Binance
+        print('Inicializando cliente Binance...')
+        try:
+            self.client_binance = BinanceClient(api_key, secret_key, sync=True, sync_interval=30000, verbose=True) # Inicia o client da Binance
+            print('Cliente Binance inicializado com sucesso')
+        except Exception as e:
+            print(f'ERRO ao inicializar cliente Binance: {str(e)}')
+            raise e
 
-      
+        try:
+            print('Definindo step size e tick size...')
+            self.setStepSizeAndTickSize()
+            print('Step size e tick size definidos com sucesso')
+        except Exception as e:
+            print(f'ERRO ao definir step size e tick size: {str(e)}')
+            raise e
 
-        self.setStepSizeAndTickSize()
+        print('Inicialização concluída com sucesso')
 
         # self.updateAllData() # Pode ser comentado em produção...
 
