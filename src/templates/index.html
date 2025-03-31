@@ -1,0 +1,1058 @@
+{% extends "layout.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block extra_css %}
+<style>
+    .modal {
+        display: none;
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        overflow: auto;
+        background-color: rgba(0, 0, 0, 0.4);
+    }
+
+    .modal-content {
+        background-color: white;
+        margin: 10% auto;
+        padding: 20px;
+        border-radius: 8px;
+        width: 80%;
+        max-width: 800px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    }
+
+    .close {
+        color: #aaa;
+        float: right;
+        font-size: 28px;
+        font-weight: bold;
+        cursor: pointer;
+    }
+
+    .close:hover {
+        color: black;
+    }
+
+    /* Estilos para a carteira */
+    .wallet-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+
+    .wallet-info {
+        font-size: 1.1rem;
+        font-weight: 500;
+        color: var(--light);
+    }
+
+    .wallet-total {
+        color: var(--success);
+        font-size: 1.2rem;
+    }
+
+    .refresh-btn {
+        display: flex;
+        align-items: center;
+        background: none;
+        border: none;
+        color: var(--primary);
+        cursor: pointer;
+        font-size: 0.9rem;
+        padding: 5px 10px;
+        border-radius: var(--border-radius);
+        transition: background-color 0.2s;
+    }
+
+    .refresh-btn:hover {
+        background-color: rgba(66, 133, 244, 0.1);
+    }
+
+    .refresh-btn .material-icons {
+        font-size: 18px;
+        margin-right: 4px;
+    }
+
+    .coin-icon {
+        width: 24px;
+        height: 24px;
+        margin-right: 8px;
+        vertical-align: middle;
+        border-radius: 50%;
+        background-color: var(--dark-tertiary);
+    }
+
+    .price-up {
+        color: var(--success);
+    }
+
+    .price-down {
+        color: var(--danger);
+    }
+
+    .cards-container {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 1.5rem;
+    }
+
+    @media (min-width: 768px) {
+        .cards-container {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+
+    .cards-container .card {
+        margin-bottom: 0;
+    }
+
+    .cards-container .card.full-width {
+        grid-column: 1 / -1;
+    }
+
+    /* Estilos para os ícones nas tabelas */
+    .action-icon {
+        cursor: pointer;
+        margin-right: 8px;
+        padding: 5px;
+        border-radius: 50%;
+        transition: background-color 0.2s;
+    }
+
+    .action-icon:hover {
+        background-color: rgba(255, 255, 255, 0.1);
+    }
+
+    .action-icon.edit {
+        color: var(--primary);
+    }
+
+    .action-icon.delete {
+        color: var(--danger);
+    }
+
+    .action-icon.play {
+        color: var(--success);
+    }
+
+    .action-icon.stop {
+        color: var(--danger);
+    }
+
+    .action-icon.view {
+        color: var(--info);
+    }
+
+    /* Status indicator */
+    .status-badge {
+        display: inline-block;
+        padding: 3px 8px;
+        border-radius: 12px;
+        font-size: 0.8rem;
+        font-weight: 500;
+    }
+
+    .status-badge.active {
+        background-color: rgba(15, 157, 88, 0.2);
+        color: var(--success);
+    }
+
+    .status-badge.inactive {
+        background-color: rgba(219, 68, 55, 0.2);
+        color: var(--danger);
+    }
+    
+    /* Botões de ação */
+    .action-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 5px;
+        margin-right: 5px;
+        border-radius: 50%;
+        background-color: transparent;
+        border: none;
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+    
+    .action-button:hover {
+        background-color: var(--dark-tertiary);
+    }
+    
+    .action-button .material-icons {
+        font-size: 20px;
+    }
+    
+    .action-button.primary .material-icons {
+        color: var(--primary);
+    }
+    
+    .action-button.success .material-icons {
+        color: var(--success);
+    }
+    
+    .action-button.danger .material-icons {
+        color: var(--danger);
+    }
+    
+    .action-button.info .material-icons {
+        color: var(--info);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="tabs">
+    <div class="tab active" data-target="tab-dashboard">
+        <span class="material-icons">dashboard</span>Dashboard
+    </div>
+    <div class="tab" data-target="tab-bot">
+        <span class="material-icons">smart_toy</span>Bot Real
+    </div>
+    <div class="tab" data-target="tab-simulation">
+        <span class="material-icons">auto_graph</span>Simulação
+    </div>
+</div>
+
+<div class="tab-content">
+    <!-- Tab Dashboard -->
+    <div id="tab-dashboard" class="active">
+        <div class="cards-container">
+            <!-- Carteira -->
+            <div class="card full-width">
+                <div class="card-header">
+                    <div class="flex flex-between flex-center">
+                        <span><span class="material-icons">account_balance_wallet</span> Minha Carteira</span>
+                        <button id="refresh-wallet" class="refresh-btn">
+                            <span class="material-icons">refresh</span> Atualizar
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="wallet-header">
+                        <div class="wallet-info">
+                            Saldo Total: <span id="total-balance" class="wallet-total">Carregando...</span>
+                        </div>
+                        <div id="wallet-updated-at"></div>
+                    </div>
+                    <div class="table-responsive">
+                        <table id="wallet-table" class="table">
+                            <thead>
+                                <tr>
+                                    <th>Moeda</th>
+                                    <th>Quantidade</th>
+                                    <th>Disponível</th>
+                                    <th>Em Uso</th>
+                                    <th>Preço (USDT)</th>
+                                    <th>Valor Total (USDT)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td colspan="6" class="text-center">Carregando saldos...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Status dos Bots Ativos -->
+            <div class="card full-width">
+                <div class="card-header">
+                    <span><span class="material-icons">sync</span> Status dos Bots Ativos</span>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table id="bot-table" class="table">
+                            <thead>
+                                <tr>
+                                    <th>Moeda</th>
+                                    <th>Posição</th>
+                                    <th>Último Preço de Compra</th>
+                                    <th>Último Preço de Venda</th>
+                                    <th>Saldo</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td colspan="6" class="text-center">Carregando bots...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Simulações Ativas -->
+            <div class="card full-width">
+                <div class="card-header">
+                    <span><span class="material-icons">lab_profile</span> Simulações Ativas</span>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table id="simulation-table" class="table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Moeda</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td colspan="3" class="text-center">Nenhuma simulação ativa</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab Bot Real -->
+    <div id="tab-bot">
+        <div class="card">
+            <div class="card-header">
+                <span><span class="material-icons">smart_toy</span> Iniciar Bot Real</span>
+            </div>
+            <div class="card-body">
+                <form id="bot-form">
+                    <div class="grid">
+                        <div class="form-group">
+                            <label for="bot-stock-code">Código da Moeda</label>
+                            <input type="text" id="bot-stock-code" class="form-control" placeholder="BTC" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="bot-operation-code">Código de Operação</label>
+                            <input type="text" id="bot-operation-code" class="form-control" placeholder="BTCUSDT" required>
+                        </div>
+                    </div>
+
+                    <div class="grid">
+                        <div class="form-group">
+                            <label for="bot-quantity">Quantidade</label>
+                            <input type="number" id="bot-quantity" class="form-control" placeholder="0.001" step="0.000001" min="0" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="bot-volatility">Fator de Volatilidade</label>
+                            <input type="number" id="bot-volatility" class="form-control" placeholder="0.5" step="0.1" min="0" value="0.5" required>
+                        </div>
+                    </div>
+
+                    <div class="grid">
+                        <div class="form-group">
+                            <label for="bot-stop-loss">Stop Loss (%)</label>
+                            <input type="number" id="bot-stop-loss" class="form-control" placeholder="3" step="0.1" min="0" value="3" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="bot-acceptable-loss">Perda Aceitável (%)</label>
+                            <input type="number" id="bot-acceptable-loss" class="form-control" placeholder="0" step="0.1" min="0" value="0" required>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="bot-fallback" checked> 
+                            Ativar Fallback (estratégia alternativa)
+                        </label>
+                    </div>
+
+                    <div class="form-group">
+                        <button type="submit" class="button button-primary">Iniciar Bot</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">Instruções</div>
+            <div class="card-body">
+                <p><strong>Fator de Volatilidade (0.5):</strong> Influencia na antecipação e nos lances de compra/venda limitados.</p>
+                <p><strong>Stop Loss (3%):</strong> Percentual máximo de perda que o bot aceitará antes de vender no mercado.</p>
+                <p><strong>Perda Aceitável (0%):</strong> Percentual que o bot aceita perder (se for 0, só aceita lucro).</p>
+                <p><strong>Fallback:</strong> Ativa estratégia alternativa que pode entrar comprada em mercados em alta.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab Simulação -->
+    <div id="tab-simulation">
+        <div class="card">
+            <div class="card-header">Iniciar Simulação</div>
+            <div class="card-body">
+                <form id="simulation-form">
+                    <div class="grid">
+                        <div class="form-group">
+                            <label for="sim-stock-code">Código da Moeda</label>
+                            <input type="text" id="sim-stock-code" class="form-control" placeholder="BTC" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="sim-operation-code">Código de Operação</label>
+                            <input type="text" id="sim-operation-code" class="form-control" placeholder="BTCUSDT" required>
+                        </div>
+                    </div>
+
+                    <div class="grid">
+                        <div class="form-group">
+                            <label for="sim-quantity">Quantidade</label>
+                            <input type="number" id="sim-quantity" class="form-control" placeholder="0.001" step="0.000001" min="0" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="sim-volatility">Fator de Volatilidade</label>
+                            <input type="number" id="sim-volatility" class="form-control" placeholder="0.5" step="0.1" min="0" value="0.5" required>
+                        </div>
+                    </div>
+
+                    <div class="grid">
+                        <div class="form-group">
+                            <label for="sim-stop-loss">Stop Loss (%)</label>
+                            <input type="number" id="sim-stop-loss" class="form-control" placeholder="3" step="0.1" min="0" value="3" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="sim-acceptable-loss">Perda Aceitável (%)</label>
+                            <input type="number" id="sim-acceptable-loss" class="form-control" placeholder="0" step="0.1" min="0" value="0" required>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="sim-fallback" checked> 
+                            Ativar Fallback (estratégia alternativa)
+                        </label>
+                    </div>
+
+                    <div class="form-group">
+                        <button type="submit" class="button button-success">Iniciar Simulação</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">Sobre a Simulação</div>
+            <div class="card-body">
+                <p>A simulação utiliza exatamente a mesma estratégia do bot real, mas não executa ordens realmente.</p>
+                <p>Ideal para testar configurações antes de utilizar dinheiro real.</p>
+                <p>Após iniciar a simulação, você pode:</p>
+                <ul>
+                    <li><strong>Executar:</strong> Simula uma verificação do mercado para decidir comprar ou vender</li>
+                    <li><strong>Resultados:</strong> Ver os resultados parciais da simulação</li>
+                    <li><strong>Parar:</strong> Finaliza a simulação e exibe os resultados finais</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Inicializa as tabs
+        const tabs = document.querySelectorAll('.tab');
+        const tabContents = document.querySelectorAll('.tab-content > div');
+        
+        tabs.forEach(tab => {
+            tab.addEventListener('click', function() {
+                const target = this.getAttribute('data-target');
+                
+                // Remove a classe active de todas as tabs e conteúdos
+                tabs.forEach(t => t.classList.remove('active'));
+                tabContents.forEach(c => c.classList.remove('active'));
+                
+                // Adiciona a classe active na tab e conteúdo clicados
+                this.classList.add('active');
+                document.getElementById(target).classList.add('active');
+            });
+        });
+        
+        // Carrega dados iniciais
+        loadWallet();
+        loadActiveBots();
+        loadActiveSimulations();
+        
+        // Atualiza dados a cada 30 segundos
+        setInterval(() => {
+            loadActiveBots();
+            loadActiveSimulations();
+        }, 30000);
+        
+        // Botão de atualizar carteira
+        document.getElementById('refresh-wallet').addEventListener('click', function() {
+            this.innerHTML = 'Atualizando... <span class="loader"></span>';
+            loadWallet().then(() => {
+                this.textContent = 'Atualizar';
+            });
+        });
+        
+        // Formulário do bot
+        const botForm = document.getElementById('bot-form');
+        if (botForm) {
+            botForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                startBot();
+            });
+        }
+        
+        // Formulário de simulação
+        const simForm = document.getElementById('simulation-form');
+        if (simForm) {
+            simForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                startSimulation();
+            });
+        }
+    });
+    
+    // Função para carregar a carteira
+    async function loadWallet() {
+        try {
+            const response = await fetch('/api/wallet');
+            if (!response.ok) {
+                throw new Error('Erro ao carregar carteira');
+            }
+            
+            const data = await response.json();
+            displayWallet(data);
+            return data;
+        } catch (error) {
+            console.error('Erro ao carregar carteira:', error);
+            document.getElementById('total-balance').textContent = 'Erro ao carregar';
+            
+            const tbody = document.querySelector('#wallet-table tbody');
+            tbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger">Erro ao carregar saldos: ${error.message}</td></tr>`;
+        }
+    }
+    
+    // Função para exibir os dados da carteira
+    function displayWallet(walletData) {
+        // Atualiza o saldo total
+        document.getElementById('total-balance').textContent = `${walletData.total_usdt_value.toFixed(2)} USDT`;
+        
+        // Atualiza a data de atualização
+        document.getElementById('wallet-updated-at').textContent = `Atualizado em: ${walletData.updated_at}`;
+        
+        // Atualiza a tabela de saldos
+        const tbody = document.querySelector('#wallet-table tbody');
+        tbody.innerHTML = '';
+        
+        if (walletData.balances.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center">Nenhum saldo disponível</td></tr>';
+            return;
+        }
+        
+        walletData.balances.forEach(coin => {
+            const row = document.createElement('tr');
+            
+            row.innerHTML = `
+                <td>
+                    <strong>${coin.asset}</strong>
+                </td>
+                <td>${coin.total.toFixed(8)}</td>
+                <td>${coin.free.toFixed(8)}</td>
+                <td>${coin.locked.toFixed(8)}</td>
+                <td>${coin.price_usdt.toFixed(6)}</td>
+                <td><strong>${coin.usdt_value.toFixed(2)}</strong></td>
+            `;
+            
+            tbody.appendChild(row);
+        });
+    }
+    
+    // Carregar bots ativos
+    async function loadActiveBots() {
+        try {
+            // Busca status do sistema
+            const statusResponse = await fetch('/api/status');
+            if (!statusResponse.ok) {
+                throw new Error('Erro ao carregar status do sistema');
+            }
+            
+            const statusData = await statusResponse.json();
+            
+            // Atualiza a tabela de bots ativos
+            const tbody = document.querySelector('#bot-table tbody');
+            
+            if (statusData.active_bots === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center">Nenhum bot ativo</td></tr>';
+                return;
+            }
+            
+            // Se houver bots ativos, busca informações detalhadas
+            const botsResponse = await fetch('/api/bot/list');
+            if (!botsResponse.ok) {
+                throw new Error('Erro ao carregar lista de bots');
+            }
+            
+            const botsData = await botsResponse.json();
+            displayActiveBots(botsData.bots);
+            
+        } catch (error) {
+            console.error('Erro ao carregar bots ativos:', error);
+            const tbody = document.querySelector('#bot-table tbody');
+            tbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger">Erro ao carregar bots: ${error.message}</td></tr>`;
+        }
+    }
+    
+    // Exibir bots ativos
+    function displayActiveBots(bots) {
+        const tbody = document.querySelector('#bot-table tbody');
+        tbody.innerHTML = '';
+        
+        if (!bots || bots.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center">Nenhum bot ativo</td></tr>';
+            return;
+        }
+        
+        bots.forEach(bot => {
+            const row = document.createElement('tr');
+            
+            const position = bot.actual_trade_position ? 
+                '<span class="badge badge-success">Comprado</span>' : 
+                '<span class="badge badge-info">Vendido</span>';
+            
+            row.innerHTML = `
+                <td><strong>${bot.operation_code}</strong></td>
+                <td>${position}</td>
+                <td>${bot.last_buy_price > 0 ? bot.last_buy_price.toFixed(8) : '-'}</td>
+                <td>${bot.last_sell_price > 0 ? bot.last_sell_price.toFixed(8) : '-'}</td>
+                <td>${bot.stock_balance.toFixed(8)}</td>
+                <td>
+                    <button class="button button-danger btn-stop-bot" data-id="${bot.id}">Parar</button>
+                </td>
+            `;
+            
+            tbody.appendChild(row);
+        });
+        
+        // Adiciona evento aos botões de parar
+        document.querySelectorAll('.btn-stop-bot').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const botId = this.getAttribute('data-id');
+                stopBot(botId);
+            });
+        });
+    }
+    
+    // Carregar simulações ativas
+    async function loadActiveSimulations() {
+        try {
+            // Busca status do sistema
+            const statusResponse = await fetch('/api/status');
+            if (!statusResponse.ok) {
+                throw new Error('Erro ao carregar status do sistema');
+            }
+            
+            const statusData = await statusResponse.json();
+            
+            // Atualiza a tabela de simulações ativas
+            const tbody = document.querySelector('#simulation-table tbody');
+            
+            if (statusData.active_simulations === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" class="text-center">Nenhuma simulação ativa</td></tr>';
+                return;
+            }
+            
+            // Se houver simulações ativas, busca informações detalhadas
+            const simsResponse = await fetch('/api/simulation/list');
+            if (!simsResponse.ok) {
+                throw new Error('Erro ao carregar lista de simulações');
+            }
+            
+            const simsData = await simsResponse.json();
+            displayActiveSimulations(simsData.simulations);
+            
+        } catch (error) {
+            console.error('Erro ao carregar simulações ativas:', error);
+            const tbody = document.querySelector('#simulation-table tbody');
+            tbody.innerHTML = `<tr><td colspan="3" class="text-center text-danger">Erro ao carregar simulações: ${error.message}</td></tr>`;
+        }
+    }
+    
+    // Exibir simulações ativas
+    function displayActiveSimulations(simulations) {
+        const tbody = document.querySelector('#simulation-table tbody');
+        tbody.innerHTML = '';
+        
+        if (!simulations || simulations.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" class="text-center">Nenhuma simulação ativa</td></tr>';
+            return;
+        }
+        
+        simulations.forEach(sim => {
+            const row = document.createElement('tr');
+            
+            row.innerHTML = `
+                <td>${sim.id}</td>
+                <td><strong>${sim.operation_code}</strong></td>
+                <td>
+                    <div class="button-group">
+                        <button class="button button-primary btn-execute-sim" data-id="${sim.id}">Executar</button>
+                        <button class="button button-info btn-results-sim" data-id="${sim.id}">Resultados</button>
+                        <button class="button button-danger btn-stop-sim" data-id="${sim.id}">Parar</button>
+                    </div>
+                </td>
+            `;
+            
+            tbody.appendChild(row);
+        });
+        
+        // Adiciona eventos aos botões
+        document.querySelectorAll('.btn-execute-sim').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const simId = this.getAttribute('data-id');
+                executeSimulation(simId);
+            });
+        });
+        
+        document.querySelectorAll('.btn-results-sim').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const simId = this.getAttribute('data-id');
+                getSimulationResults(simId);
+            });
+        });
+        
+        document.querySelectorAll('.btn-stop-sim').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const simId = this.getAttribute('data-id');
+                stopSimulation(simId);
+            });
+        });
+    }
+    
+    // Função para iniciar um bot
+    async function startBot() {
+        try {
+            const stockCode = document.getElementById('bot-stock-code').value.trim();
+            const operationCode = document.getElementById('bot-operation-code').value.trim();
+            const quantity = parseFloat(document.getElementById('bot-quantity').value);
+            const volatility = parseFloat(document.getElementById('bot-volatility').value);
+            const stopLoss = parseFloat(document.getElementById('bot-stop-loss').value);
+            const acceptableLoss = parseFloat(document.getElementById('bot-acceptable-loss').value);
+            const fallback = document.getElementById('bot-fallback').checked;
+            
+            if (!stockCode || !operationCode || isNaN(quantity) || quantity <= 0) {
+                showAlert('Preencha todos os campos corretamente', 'danger');
+                return;
+            }
+            
+            const data = {
+                stock_code: stockCode,
+                operation_code: operationCode,
+                quantity: quantity,
+                volatility_factor: volatility,
+                stop_loss: stopLoss,
+                acceptable_loss: acceptableLoss,
+                fallback_activated: fallback
+            };
+            
+            // Exibir indicador de carregamento
+            const submitBtn = document.querySelector('#bot-form button[type="submit"]');
+            const originalButtonText = submitBtn.innerHTML;
+            submitBtn.innerHTML = 'Iniciando... <span class="loader"></span>';
+            submitBtn.disabled = true;
+            
+            const response = await fetch('/api/bot/start', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            });
+            
+            const result = await response.json();
+            
+            // Restaurar o botão
+            submitBtn.innerHTML = originalButtonText;
+            submitBtn.disabled = false;
+            
+            if (result.success) {
+                showAlert(`Bot iniciado com sucesso para ${operationCode}`, 'success');
+                loadActiveBots();
+                document.getElementById('bot-form').reset();
+            } else {
+                // Verificar se é erro de saldo insuficiente para personalizar a mensagem
+                if (result.error && result.error.includes('Saldo insuficiente')) {
+                    showAlert(`Erro: ${result.error}`, 'danger');
+                    // Redirecionar para a tab de wallet para o usuário ver seu saldo
+                    const dashboardTab = document.querySelector('.tab[data-target="tab-dashboard"]');
+                    if (dashboardTab) {
+                        dashboardTab.click();
+                        // Dar destaque visual à tabela de carteira
+                        const walletCard = document.querySelector('.card:has(#wallet-table)');
+                        if (walletCard) {
+                            walletCard.style.boxShadow = '0 0 15px rgba(219, 68, 55, 0.5)';
+                            setTimeout(() => {
+                                walletCard.style.boxShadow = '';
+                            }, 3000);
+                        }
+                    }
+                } else {
+                    showAlert(`Erro ao iniciar bot: ${result.error}`, 'danger');
+                }
+            }
+            
+        } catch (error) {
+            console.error('Erro ao iniciar bot:', error);
+            showAlert(`Erro ao iniciar bot: ${error.message}`, 'danger');
+            
+            // Restaurar o botão se houver exceção
+            const submitBtn = document.querySelector('#bot-form button[type="submit"]');
+            if (submitBtn) {
+                submitBtn.innerHTML = 'Iniciar Bot';
+                submitBtn.disabled = false;
+            }
+        }
+    }
+    
+    // Função para parar um bot
+    async function stopBot(botId) {
+        try {
+            const response = await fetch(`/api/bot/stop/${botId}`, {
+                method: 'POST'
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                showAlert('Bot parado com sucesso', 'success');
+                loadActiveBots();
+            } else {
+                showAlert(`Erro ao parar bot: ${result.error}`, 'danger');
+            }
+            
+        } catch (error) {
+            console.error('Erro ao parar bot:', error);
+            showAlert(`Erro ao parar bot: ${error.message}`, 'danger');
+        }
+    }
+    
+    // Função para iniciar uma simulação
+    async function startSimulation() {
+        try {
+            const stockCode = document.getElementById('sim-stock-code').value.trim();
+            const operationCode = document.getElementById('sim-operation-code').value.trim();
+            const quantity = parseFloat(document.getElementById('sim-quantity').value);
+            const volatility = parseFloat(document.getElementById('sim-volatility').value);
+            const stopLoss = parseFloat(document.getElementById('sim-stop-loss').value);
+            const acceptableLoss = parseFloat(document.getElementById('sim-acceptable-loss').value);
+            const fallback = document.getElementById('sim-fallback').checked;
+            
+            if (!stockCode || !operationCode || isNaN(quantity) || quantity <= 0) {
+                showAlert('Preencha todos os campos corretamente', 'danger');
+                return;
+            }
+            
+            const data = {
+                stock_code: stockCode,
+                operation_code: operationCode,
+                quantity: quantity,
+                volatility_factor: volatility,
+                stop_loss: stopLoss,
+                acceptable_loss: acceptableLoss,
+                fallback_activated: fallback
+            };
+            
+            const response = await fetch('/api/simulation/start', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                showAlert(`Simulação iniciada com sucesso para ${operationCode}`, 'success');
+                loadActiveSimulations();
+                document.getElementById('simulation-form').reset();
+            } else {
+                showAlert(`Erro ao iniciar simulação: ${result.error}`, 'danger');
+            }
+            
+        } catch (error) {
+            console.error('Erro ao iniciar simulação:', error);
+            showAlert(`Erro ao iniciar simulação: ${error.message}`, 'danger');
+        }
+    }
+    
+    // Função para executar um passo da simulação
+    async function executeSimulation(simId) {
+        try {
+            const response = await fetch(`/api/simulation/${simId}/execute`, {
+                method: 'POST'
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                showAlert(`Simulação executada com sucesso. Posição: ${result.position}`, 'success');
+            } else {
+                showAlert(`Erro ao executar simulação: ${result.error}`, 'danger');
+            }
+            
+        } catch (error) {
+            console.error('Erro ao executar simulação:', error);
+            showAlert(`Erro ao executar simulação: ${error.message}`, 'danger');
+        }
+    }
+    
+    // Obter resultados da simulação
+    async function getSimulationResults(simId) {
+        try {
+            const response = await fetch(`/api/simulation/${simId}/results`);
+            
+            const result = await response.json();
+            
+            if (result.error) {
+                showAlert(`Erro ao obter resultados: ${result.error}`, 'danger');
+                return;
+            }
+            
+            // Exibe os resultados em um modal
+            const modal = document.getElementById('results-modal');
+            const content = document.getElementById('results-content');
+            
+            let resultsHTML = `
+                <h3>Resultados da Simulação - ${result.operation_code}</h3>
+                <p><strong>Posição atual:</strong> ${result.position}</p>
+                <p><strong>Compras:</strong> ${result.buys} | <strong>Vendas:</strong> ${result.sells}</p>
+                <p><strong>Saldo em moeda:</strong> ${result.stock_balance.toFixed(8)}</p>
+                <p><strong>Preço atual:</strong> ${result.current_price.toFixed(8)}</p>
+                <p><strong>Resultado:</strong> <span class="${result.profit_loss >= 0 ? 'price-up' : 'price-down'}">
+                    ${result.profit_loss.toFixed(2)} USDT (${result.profit_loss_percentage.toFixed(2)}%)
+                </span></p>
+                
+                <h4>Histórico de operações</h4>
+            `;
+            
+            if (result.trades.length === 0) {
+                resultsHTML += '<p>Nenhuma operação realizada ainda.</p>';
+            } else {
+                resultsHTML += '<div class="table-responsive"><table class="table"><thead><tr><th>Tipo</th><th>Preço</th><th>Quantidade</th><th>Total</th><th>Data</th></tr></thead><tbody>';
+                
+                result.trades.forEach(trade => {
+                    const date = new Date(trade.timestamp);
+                    const formattedDate = `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
+                    
+                    resultsHTML += `
+                        <tr>
+                            <td><span class="badge badge-${trade.type === 'BUY' ? 'success' : 'danger'}">${trade.type === 'BUY' ? 'Compra' : 'Venda'}</span></td>
+                            <td>${trade.price.toFixed(8)}</td>
+                            <td>${trade.quantity.toFixed(8)}</td>
+                            <td>${trade.total_value.toFixed(2)}</td>
+                            <td>${formattedDate}</td>
+                        </tr>
+                    `;
+                });
+                
+                resultsHTML += '</tbody></table></div>';
+            }
+            
+            content.innerHTML = resultsHTML;
+            modal.style.display = 'block';
+            
+            // Adiciona evento para fechar o modal
+            const closeBtn = modal.querySelector('.close');
+            closeBtn.onclick = function() {
+                modal.style.display = 'none';
+            };
+            
+            // Fechar modal ao clicar fora dele
+            window.onclick = function(event) {
+                if (event.target == modal) {
+                    modal.style.display = 'none';
+                }
+            };
+            
+        } catch (error) {
+            console.error('Erro ao obter resultados da simulação:', error);
+            showAlert(`Erro ao obter resultados: ${error.message}`, 'danger');
+        }
+    }
+    
+    // Função para parar uma simulação
+    async function stopSimulation(simId) {
+        try {
+            const response = await fetch(`/api/simulation/${simId}/stop`, {
+                method: 'POST'
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                showAlert('Simulação finalizada com sucesso', 'success');
+                loadActiveSimulations();
+                
+                // Exibe os resultados finais
+                const modal = document.getElementById('results-modal');
+                const content = document.getElementById('results-content');
+                
+                const finalResults = result.results;
+                
+                let resultsHTML = `
+                    <h3>Resultados Finais da Simulação</h3>
+                    <p><strong>Compras:</strong> ${finalResults.buys} | <strong>Vendas:</strong> ${finalResults.sells}</p>
+                    <p><strong>Saldo final em moeda:</strong> ${finalResults.stock_balance.toFixed(8)}</p>
+                    <p><strong>Preço final:</strong> ${finalResults.current_price.toFixed(8)}</p>
+                    <p><strong>Resultado final:</strong> <span class="${finalResults.profit_loss >= 0 ? 'price-up' : 'price-down'}">
+                        ${finalResults.profit_loss.toFixed(2)} USDT (${finalResults.profit_loss_percentage.toFixed(2)}%)
+                    </span></p>
+                `;
+                
+                content.innerHTML = resultsHTML;
+                modal.style.display = 'block';
+                
+                // Adiciona evento para fechar o modal
+                const closeBtn = modal.querySelector('.close');
+                closeBtn.onclick = function() {
+                    modal.style.display = 'none';
+                };
+                
+                // Fechar modal ao clicar fora dele
+                window.onclick = function(event) {
+                    if (event.target == modal) {
+                        modal.style.display = 'none';
+                    }
+                };
+            } else {
+                showAlert(`Erro ao finalizar simulação: ${result.error}`, 'danger');
+            }
+            
+        } catch (error) {
+            console.error('Erro ao parar simulação:', error);
+            showAlert(`Erro ao finalizar simulação: ${error.message}`, 'danger');
+        }
+    }
+    
+    // Função para exibir alertas
+    function showAlert(message, type = 'info') {
+        const alertsContainer = document.getElementById('alerts');
+        const alert = document.createElement('div');
+        alert.className = `alert alert-${type}`;
+        alert.innerHTML = message;
+        
+        alertsContainer.appendChild(alert);
+        
+        // Remove o alerta após 5 segundos
+        setTimeout(() => {
+            alert.style.opacity = '0';
+            alert.style.transition = 'opacity 0.5s';
+            setTimeout(() => {
+                alert.remove();
+            }, 500);
+        }, 5000);
+    }
+</script>
+{% endblock %} 

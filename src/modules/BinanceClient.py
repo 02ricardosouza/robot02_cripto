@@ -10,10 +10,8 @@ class BinanceClient(Client):
         api_secret=None,
         requests_params=None,
         tld="com",
-        base_endpoint=Client.BASE_ENDPOINT_DEFAULT,
+        base_endpoint="https://api.binance.com",  # Valor padrão atualizado
         testnet=False,
-        private_key=None,
-        private_key_pass=None,
         sync=True,
         ping=True,
         verbose=False,
@@ -27,10 +25,8 @@ class BinanceClient(Client):
             api_secret=api_secret,
             requests_params=requests_params,
             tld=tld,
-            base_endpoint=base_endpoint,
+            # base_endpoint foi removido nas versões mais recentes, usando testnet em vez disso
             testnet=testnet,
-            private_key=private_key,
-            private_key_pass=private_key_pass,
         )
 
         # Configurações de sincronização
@@ -38,6 +34,7 @@ class BinanceClient(Client):
         self.verbose = verbose
         self.sync_interval = sync_interval
         self.last_sync_time = 0  # Armazena o tempo da última sincronização
+        self.timestamp_offset = 0
 
         if self.sync:
             self.sync_time_offset()
@@ -111,10 +108,8 @@ class BinanceClient(Client):
 #         api_secret=None,
 #         requests_params=None,
 #         tld="com",
-#         base_endpoint=Client.BASE_ENDPOINT_DEFAULT,
+#         base_endpoint="https://api.binance.com",  # Valor padrão atualizado
 #         testnet=False,
-#         private_key=None,
-#         private_key_pass=None,
 #         sync=True,
 #         ping=True,
 #         verbose=False,
@@ -127,10 +122,7 @@ class BinanceClient(Client):
 #             api_secret=api_secret,
 #             requests_params=requests_params,
 #             tld=tld,
-#             base_endpoint=base_endpoint,
 #             testnet=testnet,
-#             private_key=private_key,
-#             private_key_pass=private_key_pass,
 #         )
 
 #         # Configurações de sincronização

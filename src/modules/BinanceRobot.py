@@ -374,11 +374,34 @@ class BinanceTraderBot():
     # --------------------------------------------------------------
     # FUNÇÕES DE COMPRA
 
-    # Compra a ação a MERCADO
+    # Compra a ação, a MERCADO
     def buyMarketOrder(self):
         try:
-            if not self.actual_trade_position:  # Se a posição for vendida
-                quantity = self.adjust_to_step((self.traded_quantity - self.partial_quantity_discount), self.step_size, as_string=True)
+            if not self.actual_trade_position:  # Se a posição não for comprada
+                quantity = self.adjust_to_step(self.traded_quantity - self.partial_quantity_discount, self.step_size, as_string=True)
+                
+                # Verificar se há saldo suficiente na conta
+                # Obter saldo em BRL (ou outra moeda base)
+                base_currency = self.operation_code.replace(self.stock_code, '')
+                base_balance = 0
+                
+                for stock in self.account_data["balances"]:
+                    if stock['asset'] == base_currency:
+                        base_balance = float(stock['free'])
+                
+                # Estimar o valor total necessário para a compra
+                current_price = self.stock_data["close_price"].iloc[-1]
+                estimated_cost = float(quantity) * current_price
+                
+                if base_balance < estimated_cost:
+                    error_msg = f"Saldo insuficiente para compra. Disponível: {base_balance:.2f} {base_currency}, Necessário: {estimated_cost:.2f} {base_currency}"
+                    logging.error(error_msg)
+                    print(f"\n❌ ERRO: {error_msg}")
+                    # Adicionar a mensagem aos logs da aplicação
+                    import api
+                    if hasattr(api, 'add_log_message'):
+                        api.add_log_message(f"ERRO: {error_msg}", "error")
+                    return False
 
                 order_buy = self.client_binance.create_order(
                     symbol=self.operation_code,
@@ -391,18 +414,33 @@ class BinanceTraderBot():
                 createLogOrder(order_buy)  # Cria um log
                 print(f"\nOrdem de COMPRA a mercado enviada com sucesso:")
                 print(order_buy)
+                
+                # Adicionar a mensagem de sucesso aos logs da aplicação
+                import api
+                if hasattr(api, 'add_log_message'):
+                    api.add_log_message(f"COMPRA a mercado de {quantity} {self.stock_code} executada com sucesso", "buy")
+                
                 return order_buy  # Retorna a ordem
 
             else:  # Se a posição já está comprada
                 logging.warning('Erro ao comprar: Posição já comprada.')
                 print('\nErro ao comprar: Posição já comprada.')
+                
+                # Adicionar aviso aos logs da aplicação
+                import api
+                if hasattr(api, 'add_log_message'):
+                    api.add_log_message(f"Aviso: Tentativa de compra ignorada pois a posição já está comprada", "warning")
+                
                 return False
 
         except Exception as e:
             logging.error(f"Erro ao executar ordem de compra a mercado: {e}")
             print(f"\nErro ao executar ordem de compra a mercado: {e}")
+            # Adicionar a mensagem aos logs da aplicação
+            import api
+            if hasattr(api, 'add_log_message'):
+                api.add_log_message(f"ERRO na compra: {str(e)}", "error")
             return False
-        
 
     # Compra por um preço máximo (Ordem Limitada)
     # [NOVA] Define o valor usando RSI e Volume Médio
@@ -427,6 +465,28 @@ class BinanceTraderBot():
 
         # Ajustar a quantidade para o stepSize permitido
         quantity = self.adjust_to_step(self.traded_quantity - self.partial_quantity_discount, self.step_size, as_string=True)
+
+        # Verificar se há saldo suficiente na conta
+        # Obter saldo em BRL (ou outra moeda base)
+        base_currency = self.operation_code.replace(self.stock_code, '')
+        base_balance = 0
+        
+        for stock in self.account_data["balances"]:
+            if stock['asset'] == base_currency:
+                base_balance = float(stock['free'])
+        
+        # Estimar o valor total necessário para a compra
+        estimated_cost = float(quantity) * float(limit_price)
+        
+        if base_balance < estimated_cost:
+            error_msg = f"Saldo insuficiente para ordem limitada de compra. Disponível: {base_balance:.2f} {base_currency}, Necessário: {estimated_cost:.2f} {base_currency}"
+            logging.error(error_msg)
+            print(f"\n❌ ERRO: {error_msg}")
+            # Adicionar a mensagem aos logs da aplicação
+            import api
+            if hasattr(api, 'add_log_message'):
+                api.add_log_message(f"ERRO: {error_msg}", "error")
+            return False
 
         # Log de informações
         print(f"Enviando ordem limitada de COMPRA para {self.operation_code}:")
@@ -455,8 +515,12 @@ class BinanceTraderBot():
         except Exception as e:
             logging.error(f"Erro ao enviar ordem limitada de COMPRA: {e}")
             print(f"\nErro ao enviar ordem limitada de COMPRA: {e}")
+            # Adicionar a mensagem aos logs da aplicação
+            import api
+            if hasattr(api, 'add_log_message'):
+                api.add_log_message(f"ERRO na ordem limitada de compra: {str(e)}", "error")
             return False
-        
+
 
     # --------------------------------------------------------------
     # FUNÇÕES DE VENDA 
@@ -466,6 +530,17 @@ class BinanceTraderBot():
         try:
             if self.actual_trade_position:  # Se a posição for comprada
                 quantity = self.adjust_to_step(self.last_stock_account_balance, self.step_size, as_string=True)
+                
+                # Verificar se há saldo suficiente na carteira
+                if self.last_stock_account_balance < float(self.step_size):
+                    error_msg = f"Saldo insuficiente para venda. Disponível: {self.last_stock_account_balance:.8f} {self.stock_code}, Mínimo necessário: {self.step_size} {self.stock_code}"
+                    logging.error(error_msg)
+                    print(f"\n❌ ERRO: {error_msg}")
+                    # Adicionar a mensagem aos logs da aplicação
+                    import api
+                    if hasattr(api, 'add_log_message'):
+                        api.add_log_message(f"ERRO: {error_msg}", "error")
+                    return False
 
                 order_sell = self.client_binance.create_order(
                     symbol=self.operation_code,
@@ -478,16 +553,32 @@ class BinanceTraderBot():
                 createLogOrder(order_sell)  # Cria um log
                 print(f"\nOrdem de VENDA a mercado enviada com sucesso:")
                 # print(order_sell)
+                
+                # Adicionar a mensagem de sucesso aos logs da aplicação
+                import api
+                if hasattr(api, 'add_log_message'):
+                    api.add_log_message(f"VENDA a mercado de {quantity} {self.stock_code} executada com sucesso", "sell")
+                
                 return order_sell  # Retorna a ordem
 
             else:  # Se a posição já está vendida
                 logging.warning('Erro ao vender: Posição já vendida.')
                 print('\nErro ao vender: Posição já vendida.')
+                
+                # Adicionar aviso aos logs da aplicação
+                import api
+                if hasattr(api, 'add_log_message'):
+                    api.add_log_message(f"Aviso: Tentativa de venda ignorada pois a posição já está vendida", "warning")
+                
                 return False
 
         except Exception as e:
             logging.error(f"Erro ao executar ordem de venda a mercado: {e}")
             print(f"\nErro ao executar ordem de venda a mercado: {e}")
+            # Adicionar a mensagem aos logs da aplicação
+            import api
+            if hasattr(api, 'add_log_message'):
+                api.add_log_message(f"ERRO na venda: {str(e)}", "error")
             return False
 
 
@@ -524,6 +615,17 @@ class BinanceTraderBot():
         # Ajustar a quantidade para o stepSize permitido
         quantity = self.adjust_to_step(self.last_stock_account_balance, self.step_size, as_string=True)
 
+        # Verificar se há saldo suficiente na carteira
+        if self.last_stock_account_balance < float(self.step_size):
+            error_msg = f"Saldo insuficiente para ordem limitada de venda. Disponível: {self.last_stock_account_balance:.8f} {self.stock_code}, Mínimo necessário: {self.step_size} {self.stock_code}"
+            logging.error(error_msg)
+            print(f"\n❌ ERRO: {error_msg}")
+            # Adicionar a mensagem aos logs da aplicação
+            import api
+            if hasattr(api, 'add_log_message'):
+                api.add_log_message(f"ERRO: {error_msg}", "error")
+            return False
+
         # Log de informações
         print(f"\nEnviando ordem limitada de VENDA para {self.operation_code}:")
         print(f" - RSI: {rsi}")
@@ -553,6 +655,10 @@ class BinanceTraderBot():
         except Exception as e:
             logging.error(f"Erro ao enviar ordem limitada de VENDA: {e}")
             print(f"\nErro ao enviar ordem limitada de VENDA: {e}")
+            # Adicionar a mensagem aos logs da aplicação
+            import api
+            if hasattr(api, 'add_log_message'):
+                api.add_log_message(f"ERRO na ordem limitada de venda: {str(e)}", "error")
             return False
 
 

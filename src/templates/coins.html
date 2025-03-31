@@ -1,0 +1,444 @@
+{% extends "layout.html" %}
+
+{% block title %}Gerenciar Moedas{% endblock %}
+
+{% block extra_css %}
+<style>
+    .form-text {
+        color: #6c757d;
+        font-size: 0.875rem;
+        margin-top: 0.25rem;
+    }
+
+    .text-right {
+        text-align: right;
+    }
+
+    .button-secondary {
+        background-color: var(--secondary);
+    }
+
+    .button-group {
+        display: flex;
+        gap: 5px;
+    }
+
+    .badge {
+        display: inline-block;
+        padding: 0.25rem 0.5rem;
+        font-size: 0.875rem;
+        font-weight: 500;
+        line-height: 1;
+        text-align: center;
+        white-space: nowrap;
+        vertical-align: baseline;
+        border-radius: 0.25rem;
+    }
+
+    .badge-success {
+        background-color: var(--success);
+        color: white;
+    }
+
+    .badge-danger {
+        background-color: var(--danger);
+        color: white;
+    }
+
+    .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 1rem;
+    }
+
+    textarea.form-control {
+        min-height: 100px;
+        resize: vertical;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <div class="flex flex-between flex-center">
+            <h3>Moedas Cadastradas</h3>
+            <button id="btn-add-coin" class="button button-primary">Nova Moeda</button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table id="coins-table" class="table">
+                <thead>
+                    <tr>
+                        <th>Nome</th>
+                        <th>Símbolo</th>
+                        <th>Par</th>
+                        <th>Descrição</th>
+                        <th>Status</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td colspan="6" class="text-center">Carregando moedas...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para adicionar/editar moeda -->
+<div id="coin-modal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="modal-title">Nova Moeda</h3>
+            <span class="close">&times;</span>
+        </div>
+        <div class="modal-body">
+            <form id="coin-form">
+                <input type="hidden" id="coin-id">
+                
+                <div class="form-group">
+                    <label for="name">Nome da Moeda</label>
+                    <input type="text" id="name" name="name" class="form-control" required>
+                    <small class="form-text">Ex: Bitcoin, Ethereum, etc.</small>
+                </div>
+                
+                <div class="form-group">
+                    <label for="symbol">Símbolo da Moeda</label>
+                    <input type="text" id="symbol" name="symbol" class="form-control" required>
+                    <small class="form-text">Ex: BTC, ETH, etc.</small>
+                </div>
+                
+                <div class="grid">
+                    <div class="form-group">
+                        <label for="base_currency">Moeda Base</label>
+                        <input type="text" id="base_currency" name="base_currency" class="form-control" required>
+                        <small class="form-text">Ex: BTC, ETH, etc.</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="quote_currency">Moeda de Cotação</label>
+                        <input type="text" id="quote_currency" name="quote_currency" class="form-control" required>
+                        <small class="form-text">Ex: USDT, BTC, etc.</small>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="trading_pair">Par de Negociação</label>
+                    <input type="text" id="trading_pair" name="trading_pair" class="form-control" required>
+                    <small class="form-text">Ex: BTCUSDT, ETHBTC, etc. (como usado na Binance)</small>
+                </div>
+                
+                <div class="form-group">
+                    <label for="description">Descrição</label>
+                    <textarea id="description" name="description" class="form-control" rows="3"></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="is_active" name="is_active" checked> 
+                        Ativo para Operações
+                    </label>
+                </div>
+                
+                <div class="form-group text-right">
+                    <button type="button" class="button button-secondary" data-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="button button-primary">Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de confirmação para exclusão -->
+<div id="confirm-modal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Confirmar Exclusão</h3>
+            <span class="close">&times;</span>
+        </div>
+        <div class="modal-body">
+            <p>Tem certeza que deseja excluir a moeda <strong id="coin-to-delete"></strong>?</p>
+            <p>Esta ação não pode ser desfeita.</p>
+            
+            <div class="form-group text-right">
+                <button type="button" class="button button-secondary" data-dismiss="modal">Cancelar</button>
+                <button id="btn-confirm-delete" type="button" class="button button-danger">Excluir</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // IDs e elementos
+    const coinsTable = document.getElementById('coins-table');
+    const coinModal = document.getElementById('coin-modal');
+    const confirmModal = document.getElementById('confirm-modal');
+    const coinForm = document.getElementById('coin-form');
+    const modalTitle = document.getElementById('modal-title');
+    const coinIdInput = document.getElementById('coin-id');
+    const coinToDeleteText = document.getElementById('coin-to-delete');
+    
+    // Botões
+    const btnAddCoin = document.getElementById('btn-add-coin');
+    const btnConfirmDelete = document.getElementById('btn-confirm-delete');
+    const closeButtons = document.querySelectorAll('.close, [data-dismiss="modal"]');
+    
+    // Estado da aplicação
+    let coinToDelete = null;
+    
+    // Inicialização
+    document.addEventListener('DOMContentLoaded', function() {
+        loadCoins();
+        setupEventListeners();
+    });
+    
+    // Configurar ouvintes de eventos
+    function setupEventListeners() {
+        // Abrir modal para nova moeda
+        btnAddCoin.addEventListener('click', function() {
+            openModalForNewCoin();
+        });
+        
+        // Fechar modais
+        closeButtons.forEach(button => {
+            button.addEventListener('click', function() {
+                coinModal.style.display = 'none';
+                confirmModal.style.display = 'none';
+            });
+        });
+        
+        // Clicar fora dos modais para fechá-los
+        window.addEventListener('click', function(event) {
+            if (event.target == coinModal) {
+                coinModal.style.display = 'none';
+            } else if (event.target == confirmModal) {
+                confirmModal.style.display = 'none';
+            }
+        });
+        
+        // Enviar formulário
+        coinForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            saveCoin();
+        });
+        
+        // Confirmar exclusão
+        btnConfirmDelete.addEventListener('click', function() {
+            if (coinToDelete) {
+                deleteCoin(coinToDelete.id);
+            }
+        });
+        
+        // Auto-preencher o par de negociação
+        const baseCurrencyInput = document.getElementById('base_currency');
+        const quoteCurrencyInput = document.getElementById('quote_currency');
+        const tradingPairInput = document.getElementById('trading_pair');
+        
+        function updateTradingPair() {
+            const base = baseCurrencyInput.value.trim().toUpperCase();
+            const quote = quoteCurrencyInput.value.trim().toUpperCase();
+            
+            if (base && quote) {
+                tradingPairInput.value = base + quote;
+            }
+        }
+        
+        baseCurrencyInput.addEventListener('input', updateTradingPair);
+        quoteCurrencyInput.addEventListener('input', updateTradingPair);
+    }
+    
+    // Carregar lista de moedas
+    function loadCoins() {
+        fetch('/api/coins')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Erro ao carregar moedas');
+                }
+                return response.json();
+            })
+            .then(coins => {
+                renderCoinsTable(coins);
+            })
+            .catch(error => {
+                console.error('Erro ao carregar moedas:', error);
+                showAlert('Erro ao carregar moedas: ' + error.message, 'danger');
+            });
+    }
+    
+    // Renderizar tabela de moedas
+    function renderCoinsTable(coins) {
+        const tbody = coinsTable.querySelector('tbody');
+        tbody.innerHTML = '';
+        
+        if (coins.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center">Nenhuma moeda cadastrada</td></tr>';
+            return;
+        }
+        
+        coins.forEach(coin => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${coin.name}</td>
+                <td>${coin.symbol}</td>
+                <td>${coin.trading_pair}</td>
+                <td>${coin.description || '-'}</td>
+                <td>
+                    <span class="badge ${coin.is_active ? 'badge-success' : 'badge-danger'}">
+                        ${coin.is_active ? 'Ativo' : 'Inativo'}
+                    </span>
+                </td>
+                <td>
+                    <div class="button-group">
+                        <button class="button button-primary btn-edit-coin" data-id="${coin.id}">Editar</button>
+                        <button class="button button-danger btn-delete-coin" data-id="${coin.id}">Excluir</button>
+                    </div>
+                </td>
+            `;
+            tbody.appendChild(row);
+        });
+        
+        // Adicionar eventos aos botões
+        document.querySelectorAll('.btn-edit-coin').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const coinId = this.getAttribute('data-id');
+                openModalForEdit(coinId);
+            });
+        });
+        
+        document.querySelectorAll('.btn-delete-coin').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const coinId = this.getAttribute('data-id');
+                const coinName = this.closest('tr').querySelector('td:first-child').textContent;
+                openConfirmModal(coinId, coinName);
+            });
+        });
+    }
+    
+    // Abrir modal para nova moeda
+    function openModalForNewCoin() {
+        modalTitle.textContent = 'Nova Moeda';
+        coinForm.reset();
+        coinIdInput.value = '';
+        coinModal.style.display = 'block';
+    }
+    
+    // Abrir modal para edição
+    function openModalForEdit(coinId) {
+        fetch(`/api/coins/${coinId}`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Erro ao carregar dados da moeda');
+                }
+                return response.json();
+            })
+            .then(coin => {
+                modalTitle.textContent = 'Editar Moeda';
+                coinIdInput.value = coin.id;
+                
+                // Preencher formulário
+                document.getElementById('name').value = coin.name;
+                document.getElementById('symbol').value = coin.symbol;
+                document.getElementById('base_currency').value = coin.base_currency;
+                document.getElementById('quote_currency').value = coin.quote_currency;
+                document.getElementById('trading_pair').value = coin.trading_pair;
+                document.getElementById('description').value = coin.description || '';
+                document.getElementById('is_active').checked = coin.is_active;
+                
+                coinModal.style.display = 'block';
+            })
+            .catch(error => {
+                console.error('Erro ao carregar dados da moeda:', error);
+                showAlert('Erro ao carregar dados da moeda: ' + error.message, 'danger');
+            });
+    }
+    
+    // Abrir modal de confirmação
+    function openConfirmModal(coinId, coinName) {
+        coinToDelete = { id: coinId, name: coinName };
+        coinToDeleteText.textContent = coinName;
+        confirmModal.style.display = 'block';
+    }
+    
+    // Salvar moeda
+    function saveCoin() {
+        const formData = new FormData(coinForm);
+        const data = {
+            name: formData.get('name'),
+            symbol: formData.get('symbol'),
+            base_currency: formData.get('base_currency'),
+            quote_currency: formData.get('quote_currency'),
+            trading_pair: formData.get('trading_pair'),
+            description: formData.get('description'),
+            is_active: formData.get('is_active') === 'on'
+        };
+        
+        const coinId = coinIdInput.value;
+        const url = coinId ? `/api/coins/${coinId}` : '/api/coins';
+        const method = coinId ? 'PUT' : 'POST';
+        
+        fetch(url, {
+            method: method,
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Erro ao salvar moeda');
+            }
+            return response.json();
+        })
+        .then(result => {
+            showAlert('Moeda salva com sucesso!', 'success');
+            coinModal.style.display = 'none';
+            loadCoins();
+        })
+        .catch(error => {
+            console.error('Erro ao salvar moeda:', error);
+            showAlert('Erro ao salvar moeda: ' + error.message, 'danger');
+        });
+    }
+    
+    // Excluir moeda
+    function deleteCoin(coinId) {
+        fetch(`/api/coins/${coinId}`, {
+            method: 'DELETE'
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Erro ao excluir moeda');
+            }
+            return response.json();
+        })
+        .then(result => {
+            showAlert('Moeda excluída com sucesso!', 'success');
+            confirmModal.style.display = 'none';
+            loadCoins();
+        })
+        .catch(error => {
+            console.error('Erro ao excluir moeda:', error);
+            showAlert('Erro ao excluir moeda: ' + error.message, 'danger');
+        });
+    }
+    
+    // Exibir alerta
+    function showAlert(message, type = 'info') {
+        const alert = document.createElement('div');
+        alert.className = `alert alert-${type}`;
+        alert.textContent = message;
+        
+        document.querySelector('.container').insertBefore(alert, document.querySelector('.card'));
+        
+        setTimeout(() => {
+            alert.remove();
+        }, 5000);
+    }
+</script>
+{% endblock %} 

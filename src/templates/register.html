@@ -1,0 +1,188 @@
+{% extends "layout.html" %}
+
+{% block title %}Cadastrar Usuário{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">Cadastrar Novo Usuário</div>
+    <div class="card-body">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="flash-messages">
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }}">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+        
+        <form method="POST" action="{{ url_for('auth.register') }}">
+            <div class="form-group">
+                <label for="username">Nome de Usuário</label>
+                <input type="text" id="username" name="username" class="form-control" required autofocus>
+            </div>
+            
+            <div class="form-group">
+                <label for="password">Senha</label>
+                <input type="password" id="password" name="password" class="form-control" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="confirm_password">Confirmar Senha</label>
+                <input type="password" id="confirm_password" name="confirm_password" class="form-control" required>
+            </div>
+            
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="is_admin" name="is_admin"> 
+                    Usuário Administrador
+                </label>
+                <small class="form-text text-muted">
+                    Administradores podem cadastrar novos usuários e gerenciar o sistema.
+                </small>
+            </div>
+            
+            <div class="form-group">
+                <button type="submit" class="button button-primary">Cadastrar</button>
+                <a href="{{ url_for('index') }}" class="button button-secondary">Cancelar</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">Usuários Cadastrados</div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table id="users-table" class="table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Usuário</th>
+                        <th>Admin</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td colspan="4" class="text-center">Carregando usuários...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        loadUsers();
+        
+        // Remove mensagens flash após 5 segundos
+        setTimeout(function() {
+            const flashMessages = document.querySelectorAll('.alert');
+            flashMessages.forEach(function(message) {
+                message.style.opacity = '0';
+                message.style.transition = 'opacity 0.5s';
+                setTimeout(function() {
+                    message.remove();
+                }, 500);
+            });
+        }, 5000);
+    });
+    
+    function loadUsers() {
+        fetch('/auth/api/users')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Erro ao carregar usuários');
+                }
+                return response.json();
+            })
+            .then(users => {
+                const tbody = document.querySelector('#users-table tbody');
+                tbody.innerHTML = '';
+                
+                if (users.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="text-center">Nenhum usuário encontrado</td></tr>';
+                    return;
+                }
+                
+                users.forEach(user => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${user.id}</td>
+                        <td>${user.username}</td>
+                        <td>${user.is_admin ? 'Sim' : 'Não'}</td>
+                        <td>
+                            <button class="button button-danger btn-delete-user" data-id="${user.id}" ${user.id === 1 ? 'disabled' : ''}>
+                                Excluir
+                            </button>
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                });
+                
+                // Adiciona eventos aos botões
+                document.querySelectorAll('.btn-delete-user').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        const userId = this.getAttribute('data-id');
+                        if (confirm('Tem certeza que deseja excluir este usuário?')) {
+                            deleteUser(userId);
+                        }
+                    });
+                });
+            })
+            .catch(error => {
+                console.error('Erro ao carregar usuários:', error);
+                const tbody = document.querySelector('#users-table tbody');
+                tbody.innerHTML = `<tr><td colspan="4" class="text-center text-danger">Erro ao carregar usuários: ${error.message}</td></tr>`;
+            });
+    }
+    
+    function deleteUser(userId) {
+        fetch(`/auth/api/users/${userId}`, {
+            method: 'DELETE'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showAlert('Usuário excluído com sucesso', 'success');
+                loadUsers();
+            } else {
+                showAlert(data.error || 'Erro ao excluir usuário', 'danger');
+            }
+        })
+        .catch(error => {
+            console.error('Erro ao excluir usuário:', error);
+            showAlert('Erro ao excluir usuário', 'danger');
+        });
+    }
+    
+    function showAlert(message, type = 'info') {
+        const alertsContainer = document.createElement('div');
+        alertsContainer.className = 'flash-messages';
+        
+        const alert = document.createElement('div');
+        alert.className = `alert alert-${type}`;
+        alert.innerHTML = message;
+        
+        alertsContainer.appendChild(alert);
+        
+        const cardBody = document.querySelector('.card-body');
+        cardBody.insertBefore(alertsContainer, cardBody.firstChild);
+        
+        // Remove o alerta após 5 segundos
+        setTimeout(function() {
+            alert.style.opacity = '0';
+            alert.style.transition = 'opacity 0.5s';
+            setTimeout(function() {
+                alertsContainer.remove();
+            }, 500);
+        }, 5000);
+    }
+</script>
+{% endblock %} 

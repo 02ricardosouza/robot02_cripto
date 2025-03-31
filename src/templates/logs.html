@@ -1,0 +1,283 @@
+{% extends "layout.html" %}
+
+{% block title %}Logs em Tempo Real{% endblock %}
+
+{% block extra_css %}
+<style>
+    #log-container {
+        background-color: var(--dark-tertiary);
+        color: var(--light);
+        height: 600px;
+        overflow-y: auto;
+        padding: 15px;
+        font-family: monospace;
+        font-size: 0.95rem;
+        line-height: 1.5;
+        border-radius: var(--border-radius);
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+    
+    #log-container p {
+        margin: 4px 0;
+        border-left: 3px solid transparent;
+        padding: 3px 0 3px 10px;
+    }
+    
+    #log-container .timestamp {
+        color: var(--light-secondary);
+        font-size: 0.85rem;
+        margin-right: 10px;
+    }
+    
+    #log-container .heartbeat {
+        color: var(--light-secondary);
+        font-style: italic;
+        opacity: 0.6;
+    }
+    
+    #log-container .simulation {
+        color: var(--info);
+        border-left-color: var(--info);
+    }
+    
+    #log-container .buy {
+        color: var(--success);
+        border-left-color: var(--success);
+        font-weight: 500;
+    }
+    
+    #log-container .sell {
+        color: var(--warning);
+        border-left-color: var(--warning);
+        font-weight: 500;
+    }
+    
+    #log-container .error {
+        color: var(--danger);
+        border-left-color: var(--danger);
+        background-color: rgba(219, 68, 55, 0.1);
+        font-weight: bold;
+        padding: 8px 10px 8px 15px;
+        margin: 8px 0;
+        border-radius: 4px;
+    }
+    
+    #log-container .warning {
+        color: var(--warning);
+        border-left-color: var(--warning);
+        background-color: rgba(244, 180, 0, 0.1);
+        padding: 5px 10px 5px 15px;
+    }
+    
+    #log-container .result {
+        color: var(--primary);
+        border-left-color: var(--primary);
+        font-weight: 500;
+    }
+    
+    .log-controls {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 1rem;
+        align-items: center;
+    }
+    
+    .log-status {
+        display: flex;
+        align-items: center;
+    }
+    
+    .status-indicator {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        margin-right: 8px;
+    }
+    
+    .status-indicator.connected {
+        background-color: var(--success);
+        box-shadow: 0 0 5px var(--success);
+    }
+    
+    .status-indicator.disconnected {
+        background-color: var(--danger);
+    }
+    
+    .log-buttons {
+        display: flex;
+        gap: 10px;
+    }
+    
+    .log-count {
+        font-size: 0.9rem;
+        margin-left: 15px;
+        color: var(--light-secondary);
+    }
+    
+    /* Destaque para palavras-chave importantes */
+    .keyword-balance {
+        color: var(--primary-light);
+        font-weight: bold;
+    }
+    
+    .keyword-error {
+        color: var(--danger);
+        font-weight: bold;
+        text-decoration: underline;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <span><span class="material-icons">receipt_long</span> Logs em Tempo Real</span>
+    </div>
+    <div class="card-body">
+        <div class="log-controls">
+            <div class="log-status">
+                <div id="status-indicator" class="status-indicator disconnected"></div>
+                <span id="connection-status">Desconectado</span>
+                <span id="log-count" class="log-count">0 mensagens</span>
+            </div>
+            <div class="log-buttons">
+                <button id="pause-button" class="button button-info">Pausar</button>
+                <button id="clear-button" class="button button-danger">Limpar</button>
+            </div>
+        </div>
+        <div id="log-container"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const logContainer = document.getElementById('log-container');
+        const pauseButton = document.getElementById('pause-button');
+        const clearButton = document.getElementById('clear-button');
+        const statusIndicator = document.getElementById('status-indicator');
+        const connectionStatus = document.getElementById('connection-status');
+        const logCount = document.getElementById('log-count');
+        
+        let isPaused = false;
+        let messageCount = 0;
+        let eventSource = null;
+        let reconnectTimeout = null;
+        
+        // Função para formatar timestamps
+        function formatTimestamp(timestamp) {
+            const date = new Date(timestamp);
+            return date.toLocaleTimeString();
+        }
+        
+        // Função para detectar e formatar palavras-chave
+        function highlightKeywords(text) {
+            // Destaque para menções de saldo
+            text = text.replace(/Saldo insuficiente/gi, '<span class="keyword-error">Saldo insuficiente</span>');
+            text = text.replace(/(\d+(\.\d+)?)\s+(BTC|ETH|USDT|BRL)/gi, '<span class="keyword-balance">$&</span>');
+            
+            // Destaque para palavras de erro
+            text = text.replace(/\b(erro|error|falha|falhou)\b/gi, '<span class="keyword-error">$&</span>');
+            
+            return text;
+        }
+        
+        // Conectar ao stream de logs
+        function connectToLogStream() {
+            if (eventSource) {
+                eventSource.close();
+            }
+            
+            eventSource = new EventSource('/api/logs/stream');
+            
+            eventSource.onopen = function() {
+                statusIndicator.className = 'status-indicator connected';
+                connectionStatus.textContent = 'Conectado';
+                connectionStatus.style.color = 'var(--success)';
+                
+                // Limpar timeout de reconexão se existir
+                if (reconnectTimeout) {
+                    clearTimeout(reconnectTimeout);
+                    reconnectTimeout = null;
+                }
+            };
+            
+            eventSource.onmessage = function(event) {
+                if (isPaused) return;
+                
+                try {
+                    const data = JSON.parse(event.data);
+                    
+                    // Ignora mensagens de heartbeat se já tiver muitas mensagens
+                    if (data.type === 'heartbeat' && messageCount > 100) {
+                        return;
+                    }
+                    
+                    const timestamp = formatTimestamp(data.timestamp);
+                    const message = highlightKeywords(data.message);
+                    
+                    const logEntry = document.createElement('p');
+                    logEntry.className = data.type || '';
+                    logEntry.innerHTML = `<span class="timestamp">[${timestamp}]</span> ${message}`;
+                    
+                    logContainer.appendChild(logEntry);
+                    logContainer.scrollTop = logContainer.scrollHeight;
+                    
+                    messageCount++;
+                    logCount.textContent = `${messageCount} mensagens`;
+                    
+                    // Limita o número de mensagens para evitar problemas de performance
+                    if (logContainer.children.length > 500) {
+                        logContainer.removeChild(logContainer.firstChild);
+                    }
+                } catch (error) {
+                    console.error('Erro ao processar mensagem de log:', error);
+                }
+            };
+            
+            eventSource.onerror = function() {
+                statusIndicator.className = 'status-indicator disconnected';
+                connectionStatus.textContent = 'Desconectado (tentando reconectar...)';
+                connectionStatus.style.color = 'var(--danger)';
+                
+                // Tentar reconectar após 5 segundos
+                if (!reconnectTimeout) {
+                    reconnectTimeout = setTimeout(() => {
+                        connectToLogStream();
+                        reconnectTimeout = null;
+                    }, 5000);
+                }
+            };
+        }
+        
+        // Inicializar a conexão
+        connectToLogStream();
+        
+        // Botão de pausar/continuar
+        pauseButton.addEventListener('click', function() {
+            isPaused = !isPaused;
+            this.textContent = isPaused ? 'Continuar' : 'Pausar';
+            this.className = isPaused ? 'button button-success' : 'button button-info';
+        });
+        
+        // Botão de limpar
+        clearButton.addEventListener('click', function() {
+            logContainer.innerHTML = '';
+            messageCount = 0;
+            logCount.textContent = '0 mensagens';
+        });
+        
+        // Limpeza na saída da página
+        window.addEventListener('beforeunload', function() {
+            if (eventSource) {
+                eventSource.close();
+            }
+            if (reconnectTimeout) {
+                clearTimeout(reconnectTimeout);
+            }
+        });
+    });
+</script>
+{% endblock %} 

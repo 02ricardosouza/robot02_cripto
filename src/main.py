@@ -36,7 +36,7 @@ THREAD_LOCK = True # True = Executa 1 moeda por vez | False = Executa todas simu
 # Moedas negociadas
 XRP_USDT = AssetStartModel(  stockCode = "XRP",
                             operationCode = "XRPUSDT",
-                            tradedQuantity = 2,
+                            tradedQuantity = 3,
                             candlePeriod = CANDLE_PERIOD, volatilityFactor = VOLATILITY_FACTOR, stopLossPercentage = STOP_LOSS_PERCENTAGE, tempoEntreTrades = TEMPO_ENTRE_TRADES, delayEntreOrdens = DELAY_ENTRE_ORDENS, acceptableLossPercentage = ACCEPTABLE_LOSS_PERCENTAGE, fallBackActivated= FALLBACK_ACTIVATED)
 
 SOL_BRL = AssetStartModel(  stockCode = "SOL",
@@ -46,7 +46,7 @@ SOL_BRL = AssetStartModel(  stockCode = "SOL",
 
 BTC_USDT = AssetStartModel(  stockCode = "BTC",
                             operationCode = "BTCUSDT",
-                            tradedQuantity = 0.01,
+                            tradedQuantity = 0.001,
                             candlePeriod = CANDLE_PERIOD, volatilityFactor = VOLATILITY_FACTOR, stopLossPercentage = STOP_LOSS_PERCENTAGE, tempoEntreTrades = TEMPO_ENTRE_TRADES, delayEntreOrdens = DELAY_ENTRE_ORDENS, acceptableLossPercentage = ACCEPTABLE_LOSS_PERCENTAGE, fallBackActivated= FALLBACK_ACTIVATED)
 
 # Array que DEVE CONTER as moedas que serão negociadas

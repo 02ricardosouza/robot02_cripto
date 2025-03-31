@@ -1,0 +1,481 @@
+{% extends "layout.html" %}
+
+{% block title %}Histórico de Simulações{% endblock %}
+
+{% block extra_css %}
+<style>
+    .simulation-table {
+        width: 100%;
+        margin-bottom: 1rem;
+    }
+    
+    .simulation-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+    
+    .stat-card {
+        background-color: var(--dark-tertiary);
+        border-radius: var(--border-radius);
+        padding: 1rem;
+        text-align: center;
+    }
+    
+    .stat-title {
+        font-size: 0.9rem;
+        color: var(--light-secondary);
+        margin-bottom: 0.5rem;
+    }
+    
+    .stat-value {
+        font-size: 1.5rem;
+        font-weight: 500;
+    }
+    
+    .positive {
+        color: var(--success);
+    }
+    
+    .negative {
+        color: var(--danger);
+    }
+    
+    .neutral {
+        color: var(--light);
+    }
+    
+    .trade-list {
+        margin-top: 2rem;
+    }
+    
+    .simulation-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+    
+    .back-button {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.5rem 1rem;
+        background-color: transparent;
+        border: 1px solid var(--primary);
+        border-radius: var(--border-radius);
+        color: var(--primary);
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+    
+    .back-button:hover {
+        background-color: rgba(66, 133, 244, 0.1);
+    }
+    
+    .back-button .material-icons {
+        margin-right: 0.5rem;
+        font-size: 18px;
+    }
+    
+    .chart-container {
+        width: 100%;
+        height: 300px;
+        margin-bottom: 1.5rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Lista de simulações -->
+<div id="simulations-list">
+    <div class="card">
+        <div class="card-header">
+            <span><span class="material-icons">insights</span> Histórico de Simulações</span>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table" id="simulations-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Par de Moedas</th>
+                            <th>Data de Início</th>
+                            <th>Data de Fim</th>
+                            <th>Operações</th>
+                            <th>Resultado (USDT)</th>
+                            <th>Resultado (%)</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td colspan="8" class="text-center">Carregando histórico de simulações...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Detalhes da simulação -->
+<div id="simulation-details" style="display: none;">
+    <div class="simulation-header">
+        <button id="back-to-list" class="back-button">
+            <span class="material-icons">arrow_back</span> Voltar para a lista
+        </button>
+        <h2 id="simulation-title">Detalhes da Simulação</h2>
+    </div>
+    
+    <div class="simulation-stats" id="stats-container">
+        <!-- Estatísticas serão carregadas aqui -->
+    </div>
+    
+    <div class="card">
+        <div class="card-header">
+            <span><span class="material-icons">show_chart</span> Gráfico de Desempenho</span>
+        </div>
+        <div class="card-body">
+            <div class="chart-container" id="performance-chart">
+                <!-- O gráfico será renderizado aqui -->
+            </div>
+        </div>
+    </div>
+    
+    <div class="card">
+        <div class="card-header">
+            <span><span class="material-icons">receipt_long</span> Operações Realizadas</span>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table" id="trades-table">
+                    <thead>
+                        <tr>
+                            <th>Data/Hora</th>
+                            <th>Tipo</th>
+                            <th>Preço</th>
+                            <th>Quantidade</th>
+                            <th>Valor Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td colspan="5" class="text-center">Carregando operações...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const simulationsList = document.getElementById('simulations-list');
+        const simulationDetails = document.getElementById('simulation-details');
+        const backToListBtn = document.getElementById('back-to-list');
+        const simulationsTable = document.getElementById('simulations-table');
+        const tradesTable = document.getElementById('trades-table');
+        const statsContainer = document.getElementById('stats-container');
+        const simulationTitle = document.getElementById('simulation-title');
+        let performanceChart = null;
+        
+        // Carregar lista de simulações
+        loadSimulations();
+        
+        // Evento de voltar para a lista
+        backToListBtn.addEventListener('click', function() {
+            simulationDetails.style.display = 'none';
+            simulationsList.style.display = 'block';
+        });
+        
+        // Função para carregar simulações
+        function loadSimulations() {
+            fetch('/api/simulation/history/list')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.simulations.length > 0) {
+                        const tableBody = simulationsTable.querySelector('tbody');
+                        tableBody.innerHTML = '';
+                        
+                        data.simulations.forEach(simulation => {
+                            const row = document.createElement('tr');
+                            
+                            // Formatar valores
+                            const profitLoss = parseFloat(simulation.profit_loss).toFixed(4);
+                            const profitLossClass = simulation.profit_loss >= 0 ? 'positive' : 'negative';
+                            const profitLossPercentage = parseFloat(simulation.profit_loss_percentage).toFixed(2);
+                            
+                            row.innerHTML = `
+                                <td>${simulation.id}</td>
+                                <td>${simulation.operation_code}</td>
+                                <td>${formatDate(simulation.start_date)}</td>
+                                <td>${formatDate(simulation.end_date)}</td>
+                                <td>${simulation.trade_count}</td>
+                                <td class="${profitLossClass}">${profitLoss}</td>
+                                <td class="${profitLossClass}">${profitLossPercentage}%</td>
+                                <td>
+                                    <button class="action-button info view-details" data-id="${simulation.id}">
+                                        <span class="material-icons">visibility</span>
+                                    </button>
+                                </td>
+                            `;
+                            
+                            tableBody.appendChild(row);
+                        });
+                        
+                        // Adicionar evento aos botões de detalhes
+                        document.querySelectorAll('.view-details').forEach(button => {
+                            button.addEventListener('click', function() {
+                                const simulationId = this.getAttribute('data-id');
+                                loadSimulationDetails(simulationId);
+                            });
+                        });
+                    } else {
+                        simulationsTable.querySelector('tbody').innerHTML = `
+                            <tr>
+                                <td colspan="8" class="text-center">Nenhuma simulação encontrada</td>
+                            </tr>
+                        `;
+                    }
+                })
+                .catch(error => {
+                    console.error('Erro ao carregar simulações:', error);
+                    simulationsTable.querySelector('tbody').innerHTML = `
+                        <tr>
+                            <td colspan="8" class="text-center">Erro ao carregar dados</td>
+                        </tr>
+                    `;
+                });
+        }
+        
+        // Função para carregar detalhes da simulação
+        function loadSimulationDetails(simulationId) {
+            fetch(`/api/simulation/history/${simulationId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Atualizar título
+                        simulationTitle.textContent = `Simulação: ${data.details.operation_code}`;
+                        
+                        // Mostrar estatísticas
+                        displayStats(data.statistics);
+                        
+                        // Mostrar transações
+                        displayTrades(data.trades);
+                        
+                        // Criar gráfico de desempenho
+                        createPerformanceChart(data.trades);
+                        
+                        // Mostrar tela de detalhes
+                        simulationsList.style.display = 'none';
+                        simulationDetails.style.display = 'block';
+                    } else {
+                        alert('Erro ao carregar detalhes da simulação');
+                    }
+                })
+                .catch(error => {
+                    console.error('Erro ao carregar detalhes:', error);
+                    alert('Erro ao carregar detalhes da simulação');
+                });
+        }
+        
+        // Função para exibir estatísticas
+        function displayStats(stats) {
+            const profitLossClass = stats.profit_loss >= 0 ? 'positive' : 'negative';
+            statsContainer.innerHTML = `
+                <div class="stat-card">
+                    <div class="stat-title">Resultado (USDT)</div>
+                    <div class="stat-value ${profitLossClass}">${parseFloat(stats.profit_loss).toFixed(4)}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-title">Resultado (%)</div>
+                    <div class="stat-value ${profitLossClass}">${parseFloat(stats.profit_loss_percentage).toFixed(2)}%</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-title">Compras</div>
+                    <div class="stat-value neutral">${stats.buy_count}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-title">Vendas</div>
+                    <div class="stat-value neutral">${stats.sell_count}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-title">Valor Total Compra</div>
+                    <div class="stat-value neutral">${parseFloat(stats.total_buy_value).toFixed(4)}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-title">Valor Total Venda</div>
+                    <div class="stat-value neutral">${parseFloat(stats.total_sell_value).toFixed(4)}</div>
+                </div>
+            `;
+        }
+        
+        // Função para exibir transações
+        function displayTrades(trades) {
+            const tableBody = tradesTable.querySelector('tbody');
+            tableBody.innerHTML = '';
+            
+            if (trades.length === 0) {
+                tableBody.innerHTML = `
+                    <tr>
+                        <td colspan="5" class="text-center">Nenhuma operação encontrada</td>
+                    </tr>
+                `;
+                return;
+            }
+            
+            trades.forEach(trade => {
+                const row = document.createElement('tr');
+                const tradeTypeClass = trade.trade_type === 'BUY' ? 'buy' : 'sell';
+                
+                row.innerHTML = `
+                    <td>${formatDate(trade.timestamp)}</td>
+                    <td class="${tradeTypeClass}">${trade.trade_type}</td>
+                    <td>${parseFloat(trade.price).toFixed(4)}</td>
+                    <td>${parseFloat(trade.quantity).toFixed(8)}</td>
+                    <td>${parseFloat(trade.total_value).toFixed(4)}</td>
+                `;
+                
+                tableBody.appendChild(row);
+            });
+        }
+        
+        // Função para criar gráfico de desempenho
+        function createPerformanceChart(trades) {
+            const ctx = document.getElementById('performance-chart');
+            
+            // Destruir gráfico existente se houver
+            if (performanceChart) {
+                performanceChart.destroy();
+            }
+            
+            // Preparar dados para o gráfico
+            const labels = [];
+            const buyPrices = [];
+            const sellPrices = [];
+            const cumulativeBalance = [];
+            
+            let balance = 0;
+            
+            trades.forEach(trade => {
+                const date = new Date(trade.timestamp);
+                labels.push(date);
+                
+                if (trade.trade_type === 'BUY') {
+                    buyPrices.push(trade.price);
+                    sellPrices.push(null);
+                    balance -= parseFloat(trade.total_value);
+                } else {
+                    buyPrices.push(null);
+                    sellPrices.push(trade.price);
+                    balance += parseFloat(trade.total_value);
+                }
+                
+                cumulativeBalance.push(balance);
+            });
+            
+            // Configurar cores com base no tema escuro
+            Chart.defaults.color = '#e0e0e0';
+            Chart.defaults.borderColor = 'rgba(255, 255, 255, 0.1)';
+            
+            // Criar gráfico
+            performanceChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Compras',
+                            data: buyPrices,
+                            backgroundColor: 'rgba(15, 157, 88, 0.5)',
+                            borderColor: 'rgba(15, 157, 88, 1)',
+                            pointBackgroundColor: 'rgba(15, 157, 88, 1)',
+                            pointRadius: 5,
+                            pointHoverRadius: 7,
+                            showLine: false
+                        },
+                        {
+                            label: 'Vendas',
+                            data: sellPrices,
+                            backgroundColor: 'rgba(219, 68, 55, 0.5)',
+                            borderColor: 'rgba(219, 68, 55, 1)',
+                            pointBackgroundColor: 'rgba(219, 68, 55, 1)',
+                            pointRadius: 5,
+                            pointHoverRadius: 7,
+                            showLine: false
+                        },
+                        {
+                            label: 'Saldo Acumulado',
+                            data: cumulativeBalance,
+                            backgroundColor: 'rgba(66, 133, 244, 0.1)',
+                            borderColor: 'rgba(66, 133, 244, 1)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            backgroundColor: 'rgba(30, 30, 30, 0.9)',
+                            borderColor: 'rgba(255, 255, 255, 0.2)',
+                            borderWidth: 1,
+                            titleColor: '#e0e0e0',
+                            bodyColor: '#e0e0e0',
+                            footerColor: '#a0a0a0'
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'day',
+                                displayFormats: {
+                                    day: 'dd/MM/yyyy'
+                                }
+                            },
+                            grid: {
+                                display: true,
+                                color: 'rgba(255, 255, 255, 0.05)'
+                            }
+                        },
+                        y: {
+                            grid: {
+                                display: true,
+                                color: 'rgba(255, 255, 255, 0.05)'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Função para formatar data
+        function formatDate(dateString) {
+            if (!dateString) return 'N/A';
+            
+            const date = new Date(dateString);
+            return date.toLocaleString('pt-BR', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+    });
+</script>
+{% endblock %} 
