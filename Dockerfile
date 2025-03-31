@@ -1,33 +1,21 @@
 FROM python:3.9-slim
 
-# Configurar variáveis de ambiente
-ENV PYTHONFAULTHANDLER=1 \
-    PYTHONUNBUFFERED=1 \
-    PYTHONHASHSEED=random \
-    PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PORT=5000
-
-# Criar diretório da aplicação
 WORKDIR /app
 
 # Instalar dependências do sistema
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends gcc \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && \
+    apt-get install -y gcc && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-# Copiar apenas o requirements.txt primeiro para aproveitar o cache do Docker
-COPY requirements.txt .
-
-# Instalar dependências Python
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copiar o resto do código
+# Copiar o código da aplicação
 COPY . .
 
-# Criar diretório de logs se não existir
-RUN mkdir -p src/logs
+# Tornar o script de setup executável
+RUN chmod +x setup.sh
+
+# Instalar dependências Python
+RUN ./setup.sh
 
 # Expor porta
 EXPOSE 5000
