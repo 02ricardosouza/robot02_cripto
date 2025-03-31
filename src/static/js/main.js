@@ -505,6 +505,195 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // Exibir mensagem de erro de saldo insuficiente com estilo aprimorado
+    function showInsufficientBalanceError(error) {
+        // Criar o elemento de alerta
+        const alertContainer = document.createElement('div');
+        alertContainer.className = 'insufficient-balance-alert';
+        
+        // Determinar detalhes do erro
+        let currency = error.currency || 'USDT';
+        let available = error.available_balance ? error.available_balance.toFixed(8) : '0';
+        let required = error.required_balance ? error.required_balance.toFixed(8) : '0';
+        
+        // Construir o conteúdo do alerta com estilo aprimorado
+        alertContainer.innerHTML = `
+            <div class="alert-header">
+                <div class="alert-icon">
+                    <span class="material-icons">warning</span>
+                </div>
+                <div class="alert-title">Saldo Insuficiente</div>
+                <button class="alert-close">&times;</button>
+            </div>
+            <div class="alert-body">
+                <p>Você não tem saldo suficiente para iniciar esta operação.</p>
+                <div class="balance-details">
+                    <div class="balance-row">
+                        <div class="balance-label">Disponível:</div>
+                        <div class="balance-value available">${available} ${currency}</div>
+                    </div>
+                    <div class="balance-row">
+                        <div class="balance-label">Necessário:</div>
+                        <div class="balance-value required">${required} ${currency}</div>
+                    </div>
+                    <div class="balance-row">
+                        <div class="balance-label">Faltando:</div>
+                        <div class="balance-value missing">${(required - available).toFixed(8)} ${currency}</div>
+                    </div>
+                </div>
+                <div class="alert-actions">
+                    <button class="button button-primary goto-wallet">Ver Carteira</button>
+                </div>
+            </div>
+        `;
+        
+        // Adicionar estilo CSS inline para o alerta
+        const style = document.createElement('style');
+        style.textContent = `
+            .insufficient-balance-alert {
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                width: 400px;
+                background-color: var(--dark-secondary);
+                border-radius: 8px;
+                box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+                z-index: 9999;
+                border-left: 5px solid var(--danger);
+            }
+            
+            .alert-header {
+                display: flex;
+                align-items: center;
+                padding: 15px 20px;
+                border-bottom: 1px solid rgba(255,255,255,0.1);
+            }
+            
+            .alert-icon {
+                color: var(--danger);
+                margin-right: 10px;
+            }
+            
+            .alert-icon .material-icons {
+                font-size: 24px;
+            }
+            
+            .alert-title {
+                font-size: 18px;
+                font-weight: bold;
+                flex-grow: 1;
+            }
+            
+            .alert-close {
+                background: none;
+                border: none;
+                color: var(--light-secondary);
+                font-size: 24px;
+                cursor: pointer;
+                padding: 0;
+            }
+            
+            .alert-body {
+                padding: 20px;
+            }
+            
+            .balance-details {
+                background-color: rgba(0,0,0,0.2);
+                border-radius: 6px;
+                padding: 15px;
+                margin: 15px 0;
+            }
+            
+            .balance-row {
+                display: flex;
+                justify-content: space-between;
+                margin-bottom: 8px;
+                padding-bottom: 8px;
+                border-bottom: 1px solid rgba(255,255,255,0.05);
+            }
+            
+            .balance-row:last-child {
+                margin-bottom: 0;
+                padding-bottom: 0;
+                border-bottom: none;
+            }
+            
+            .balance-label {
+                font-weight: 500;
+                color: var(--light-secondary);
+            }
+            
+            .balance-value {
+                font-family: monospace;
+                font-weight: bold;
+            }
+            
+            .balance-value.available {
+                color: var(--warning);
+            }
+            
+            .balance-value.required {
+                color: var(--primary);
+            }
+            
+            .balance-value.missing {
+                color: var(--danger);
+            }
+            
+            .alert-actions {
+                display: flex;
+                justify-content: flex-end;
+                margin-top: 20px;
+            }
+            
+            .overlay {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background-color: rgba(0,0,0,0.6);
+                z-index: 9998;
+            }
+        `;
+        
+        // Adicionar overlay
+        const overlay = document.createElement('div');
+        overlay.className = 'overlay';
+        
+        // Anexar elementos ao corpo do documento
+        document.body.appendChild(style);
+        document.body.appendChild(overlay);
+        document.body.appendChild(alertContainer);
+        
+        // Configurar listeners de eventos
+        alertContainer.querySelector('.alert-close').addEventListener('click', function() {
+            document.body.removeChild(alertContainer);
+            document.body.removeChild(overlay);
+            document.body.removeChild(style);
+        });
+        
+        overlay.addEventListener('click', function() {
+            document.body.removeChild(alertContainer);
+            document.body.removeChild(overlay);
+            document.body.removeChild(style);
+        });
+        
+        // Botão para ir para a carteira
+        alertContainer.querySelector('.goto-wallet').addEventListener('click', function() {
+            document.body.removeChild(alertContainer);
+            document.body.removeChild(overlay);
+            document.body.removeChild(style);
+            
+            // Redirecionar para a tab de wallet
+            const dashboardTab = document.querySelector('.tab[data-target="tab-dashboard"]');
+            if (dashboardTab) {
+                dashboardTab.click();
+            }
+        });
+    }
+
     // Inicialização de componentes específicos
     function initComponents() {
         // Inicializar formulário do bot

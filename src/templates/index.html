@@ -515,58 +515,86 @@
     });
     
     // Função para carregar a carteira
-    async function loadWallet() {
-        try {
-            const response = await fetch('/api/wallet');
-            if (!response.ok) {
-                throw new Error('Erro ao carregar carteira');
-            }
-            
-            const data = await response.json();
-            displayWallet(data);
-            return data;
-        } catch (error) {
-            console.error('Erro ao carregar carteira:', error);
-            document.getElementById('total-balance').textContent = 'Erro ao carregar';
-            
-            const tbody = document.querySelector('#wallet-table tbody');
-            tbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger">Erro ao carregar saldos: ${error.message}</td></tr>`;
-        }
-    }
-    
-    // Função para exibir os dados da carteira
-    function displayWallet(walletData) {
-        // Atualiza o saldo total
-        document.getElementById('total-balance').textContent = `${walletData.total_usdt_value.toFixed(2)} USDT`;
+    function loadWallet() {
+        const walletTable = document.getElementById('wallet-table');
+        const totalBalance = document.getElementById('total-balance');
+        const walletUpdatedAt = document.getElementById('wallet-updated-at');
         
-        // Atualiza a data de atualização
-        document.getElementById('wallet-updated-at').textContent = `Atualizado em: ${walletData.updated_at}`;
+        if (!walletTable || !totalBalance) return;
         
-        // Atualiza a tabela de saldos
-        const tbody = document.querySelector('#wallet-table tbody');
-        tbody.innerHTML = '';
-        
-        if (walletData.balances.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center">Nenhum saldo disponível</td></tr>';
-            return;
-        }
-        
-        walletData.balances.forEach(coin => {
-            const row = document.createElement('tr');
-            
-            row.innerHTML = `
-                <td>
-                    <strong>${coin.asset}</strong>
-                </td>
-                <td>${coin.total.toFixed(8)}</td>
-                <td>${coin.free.toFixed(8)}</td>
-                <td>${coin.locked.toFixed(8)}</td>
-                <td>${coin.price_usdt.toFixed(6)}</td>
-                <td><strong>${coin.usdt_value.toFixed(2)}</strong></td>
-            `;
-            
-            tbody.appendChild(row);
-        });
+        fetch('/api/wallet')
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    const balances = data.balances || [];
+                    const tbody = walletTable.querySelector('tbody');
+                    tbody.innerHTML = '';
+                    
+                    if (balances.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="6" class="text-center">Nenhum saldo encontrado</td></tr>';
+                        totalBalance.textContent = '0.00 USDT';
+                        return;
+                    }
+                    
+                    balances.forEach(coin => {
+                        const row = document.createElement('tr');
+                        
+                        // Valores já fornecidos pela API
+                        const free = typeof coin.free === 'number' ? coin.free : 0;
+                        const locked = typeof coin.locked === 'number' ? coin.locked : 0;
+                        const total = typeof coin.total === 'number' ? coin.total : (free + locked);
+                        const price = typeof coin.price_usdt === 'number' ? coin.price_usdt : 0;
+                        const usdtValue = typeof coin.usdt_value === 'number' ? coin.usdt_value : 0;
+                        
+                        // Formatar valores
+                        const freeFormatted = free.toFixed(8);
+                        const lockedFormatted = locked.toFixed(8);
+                        const totalFormatted = total.toFixed(8);
+                        const priceFormatted = price.toFixed(price < 1 ? 8 : 2);
+                        const usdtFormatted = usdtValue.toFixed(2);
+                        
+                        row.innerHTML = `
+                            <td>
+                                <strong>${coin.asset}</strong>
+                            </td>
+                            <td>${totalFormatted}</td>
+                            <td>${freeFormatted}</td>
+                            <td>${lockedFormatted}</td>
+                            <td>${priceFormatted}</td>
+                            <td><strong>${usdtFormatted}</strong></td>
+                        `;
+                        
+                        tbody.appendChild(row);
+                    });
+                    
+                    // Atualizar saldo total
+                    if (typeof data.total_usdt_value === 'number') {
+                        totalBalance.textContent = `${data.total_usdt_value.toFixed(2)} USDT`;
+                    } else {
+                        // Calcular o total se não for fornecido
+                        const totalUsdt = balances.reduce((sum, coin) => {
+                            return sum + (typeof coin.usdt_value === 'number' ? coin.usdt_value : 0);
+                        }, 0);
+                        totalBalance.textContent = `${totalUsdt.toFixed(2)} USDT`;
+                    }
+                    
+                    // Atualizar timestamp
+                    if (walletUpdatedAt) {
+                        const timestamp = data.updated_at || new Date().toLocaleString();
+                        walletUpdatedAt.textContent = `Atualizado em: ${timestamp}`;
+                    }
+                } else {
+                    const tbody = walletTable.querySelector('tbody');
+                    tbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger">Erro: ${data.message || data.error || 'Falha ao carregar saldos'}</td></tr>`;
+                    totalBalance.textContent = 'Erro';
+                }
+            })
+            .catch(error => {
+                console.error('Erro ao carregar carteira:', error);
+                const tbody = walletTable.querySelector('tbody');
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Erro ao carregar saldos</td></tr>';
+                totalBalance.textContent = 'Erro';
+            });
     }
     
     // Carregar bots ativos
@@ -747,9 +775,9 @@
             }
             
             const data = {
-                stock_code: stockCode,
-                operation_code: operationCode,
-                quantity: quantity,
+                symbol: operationCode,  // usando o par de operação como símbolo
+                operation_mode: stockCode,
+                traded_quantity: quantity,
                 volatility_factor: volatility,
                 stop_loss: stopLoss,
                 acceptable_loss: acceptableLoss,
@@ -781,22 +809,10 @@
                 loadActiveBots();
                 document.getElementById('bot-form').reset();
             } else {
-                // Verificar se é erro de saldo insuficiente para personalizar a mensagem
-                if (result.error && result.error.includes('Saldo insuficiente')) {
-                    showAlert(`Erro: ${result.error}`, 'danger');
-                    // Redirecionar para a tab de wallet para o usuário ver seu saldo
-                    const dashboardTab = document.querySelector('.tab[data-target="tab-dashboard"]');
-                    if (dashboardTab) {
-                        dashboardTab.click();
-                        // Dar destaque visual à tabela de carteira
-                        const walletCard = document.querySelector('.card:has(#wallet-table)');
-                        if (walletCard) {
-                            walletCard.style.boxShadow = '0 0 15px rgba(219, 68, 55, 0.5)';
-                            setTimeout(() => {
-                                walletCard.style.boxShadow = '';
-                            }, 3000);
-                        }
-                    }
+                // Verificar se é erro de saldo insuficiente
+                if (result.code === 'insufficient_balance') {
+                    // Usar o novo componente visual para mostrar erro de saldo insuficiente
+                    showInsufficientBalanceError(result);
                 } else {
                     showAlert(`Erro ao iniciar bot: ${result.error}`, 'danger');
                 }

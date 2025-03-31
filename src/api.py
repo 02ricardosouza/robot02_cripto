@@ -16,6 +16,7 @@ from flask import Blueprint, request, jsonify, render_template, redirect, url_fo
 from flask_login import login_required, current_user
 from binance.client import Client
 from binance.exceptions import BinanceAPIException
+import math
 
 # Configurar logger para este módulo
 logger = logging.getLogger(__name__)
@@ -272,20 +273,74 @@ def get_wallet():
             client = Client(api_key, api_secret)
             account = client.get_account()
             
+            # Obter todos os preços atuais para converter em USDT
+            tickers = client.get_ticker()
+            price_map = {}
+            
+            for ticker in tickers:
+                symbol = ticker['symbol']
+                price = float(ticker['lastPrice'])
+                price_map[symbol] = price
+                
             # Filtrar apenas saldos não-zero
-            balances = [
-                {
-                    "asset": asset['asset'],
-                    "free": float(asset['free']),
-                    "locked": float(asset['locked'])
-                }
-                for asset in account['balances'] 
-                if float(asset['free']) > 0 or float(asset['locked']) > 0
-            ]
+            balances = []
+            total_usdt_value = 0
+            
+            for asset in account['balances']:
+                free = float(asset['free'])
+                locked = float(asset['locked'])
+                total = free + locked
+                
+                if total > 0:
+                    asset_symbol = asset['asset']
+                    price_usdt = 0
+                    usdt_value = 0
+                    
+                    # Calcular valor em USDT
+                    if asset_symbol == 'USDT':
+                        price_usdt = 1
+                        usdt_value = total
+                    else:
+                        # Tentar obter preço diretamente em USDT
+                        symbol_usdt = f"{asset_symbol}USDT"
+                        if symbol_usdt in price_map:
+                            price_usdt = price_map[symbol_usdt]
+                            usdt_value = total * price_usdt
+                        else:
+                            # Tentar via BTC
+                            symbol_btc = f"{asset_symbol}BTC"
+                            if symbol_btc in price_map and "BTCUSDT" in price_map:
+                                price_btc = price_map[symbol_btc]
+                                price_btc_usdt = price_map["BTCUSDT"]
+                                price_usdt = price_btc * price_btc_usdt
+                                usdt_value = total * price_usdt
+                    
+                    # Validar valores para evitar NaN ou null
+                    if usdt_value is None or math.isnan(usdt_value):
+                        usdt_value = 0
+                    if price_usdt is None or math.isnan(price_usdt):
+                        price_usdt = 0
+                        
+                    # Adicionar à lista de saldos
+                    balances.append({
+                        "asset": asset_symbol,
+                        "free": free,
+                        "locked": locked,
+                        "total": total,
+                        "price_usdt": price_usdt,
+                        "usdt_value": usdt_value
+                    })
+                    
+                    total_usdt_value += usdt_value
+            
+            # Ordenar por valor em USDT (do maior para o menor)
+            balances.sort(key=lambda x: x['usdt_value'], reverse=True)
             
             return jsonify({
                 "status": "success",
-                "balances": balances
+                "balances": balances,
+                "total_usdt_value": total_usdt_value,
+                "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             })
         except BinanceAPIException as e:
             return jsonify({
@@ -294,6 +349,7 @@ def get_wallet():
             }), 400
         
     except Exception as e:
+        logger.error(f"Erro ao carregar carteira: {str(e)}")
         return jsonify({
             "status": "error",
             "message": str(e)
@@ -340,8 +396,8 @@ def start_bot():
         for field in required_fields:
             if field not in data:
                 return jsonify({
-                    "status": "error",
-                    "message": f"Campo obrigatório ausente: {field}"
+                    "success": False,
+                    "error": f"Campo obrigatório ausente: {field}"
                 }), 400
         
         symbol = data['symbol']
@@ -356,8 +412,9 @@ def start_bot():
             for existing_bot_id, bot in running_bots.items():
                 if bot.symbol == symbol and bot.operation_mode == operation_mode:
                     return jsonify({
-                        "status": "error",
-                        "message": f"Já existe um robô em execução para {symbol} com modo {operation_mode}"
+                        "success": False,
+                        "error": f"Já existe um robô em execução para {symbol} com modo {operation_mode}",
+                        "code": "bot_already_running"
                     }), 400
         
         # Iniciar o robô
@@ -367,16 +424,47 @@ def start_bot():
             
             if not api_key or not api_secret or api_key == 'sua_api_key_aqui' or api_secret == 'sua_secret_key_aqui':
                 return jsonify({
-                    "status": "error",
-                    "message": "Chaves da API Binance não configuradas"
+                    "success": False,
+                    "error": "Chaves da API Binance não configuradas",
+                    "code": "api_keys_missing"
                 }), 400
             
+            # Verificar saldo antes de iniciar
+            client = Client(api_key, api_secret)
+            account = client.get_account()
+            
+            # Verificar saldo base para comprar (se precisamos de USDT, BTC, etc.)
+            quote_currency = symbol.split('/')[-1] if '/' in symbol else 'USDT'  # parte após a barra ou USDT por padrão
+            
+            # Encontrar o saldo da moeda de cotação
+            available_balance = 0
+            for balance in account['balances']:
+                if balance['asset'] == quote_currency:
+                    available_balance = float(balance['free'])
+                    break
+            
+            # Verificar se tem saldo suficiente
+            if available_balance < traded_quantity:
+                return jsonify({
+                    "success": False,
+                    "error": f"Saldo insuficiente. Você tem {available_balance:.8f} {quote_currency}, mas precisa de {traded_quantity:.8f} {quote_currency}",
+                    "code": "insufficient_balance",
+                    "available_balance": available_balance,
+                    "required_balance": traded_quantity,
+                    "currency": quote_currency
+                }), 400
+            
+            # Tudo ok, criar e iniciar o bot
             bot = BinanceTraderBot(
                 symbol=symbol,
                 operation_mode=operation_mode,
                 api_key=api_key,
                 api_secret=api_secret,
-                traded_quantity=traded_quantity
+                traded_quantity=traded_quantity,
+                volatility_factor=data.get('volatility_factor', VOLATILITY_FACTOR),
+                stop_loss_percentage=data.get('stop_loss', STOP_LOSS_PERCENTAGE),
+                acceptable_loss_percentage=data.get('acceptable_loss', ACCEPTABLE_LOSS_PERCENTAGE),
+                fallback_activated=data.get('fallback_activated', FALLBACK_ACTIVATED)
             )
             
             # Adicionar bot à lista de robôs em execução
@@ -388,22 +476,46 @@ def start_bot():
             bot_thread.daemon = True
             bot_thread.start()
             
+            add_log_message(f"Bot iniciado para {symbol} com modo {operation_mode}", "success")
+            
             return jsonify({
-                "status": "success",
+                "success": True,
                 "message": f"Robô iniciado com sucesso para {symbol}",
                 "bot_id": bot_id
             })
             
-        except Exception as e:
+        except BinanceAPIException as e:
+            error_msg = f"Erro da API Binance: {e.message}"
+            logger.error(f"Erro ao iniciar bot - {error_msg}")
+            
+            # Verificar se é erro de saldo insuficiente
+            if e.code == -2010 and "insufficient balance" in e.message.lower():
+                return jsonify({
+                    "success": False,
+                    "error": "Saldo insuficiente na Binance para realizar esta operação",
+                    "code": "insufficient_balance",
+                    "details": e.message
+                }), 400
+                
             return jsonify({
-                "status": "error",
-                "message": f"Erro ao iniciar robô: {str(e)}"
+                "success": False,
+                "error": error_msg,
+                "code": e.code
+            }), 400
+            
+        except Exception as e:
+            error_msg = f"Erro ao iniciar robô: {str(e)}"
+            logger.error(error_msg)
+            return jsonify({
+                "success": False,
+                "error": error_msg
             }), 500
         
     except Exception as e:
+        logger.error(f"Erro genérico ao iniciar bot: {str(e)}")
         return jsonify({
-            "status": "error",
-            "message": str(e)
+            "success": False,
+            "error": str(e)
         }), 500
 
 # Parar robô
@@ -788,4 +900,145 @@ def stop_simulation(simulation_id):
         
     except Exception as e:
         logger.error(f"Erro ao finalizar simulação {simulation_id}: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500 
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# Endpoint para listar moedas da Binance
+@api_bp.route('/api/binance/coins', methods=['GET'])
+@login_required
+def get_binance_coins():
+    try:
+        api_key = os.environ.get('BINANCE_API_KEY')
+        api_secret = os.environ.get('BINANCE_SECRET_KEY')
+        
+        if not api_key or not api_secret or api_key == 'sua_api_key_aqui' or api_secret == 'sua_secret_key_aqui':
+            return jsonify({
+                "success": False,
+                "message": "Chaves da API Binance não configuradas"
+            }), 400
+        
+        # Tipo de moeda solicitado (opcional)
+        coin_type = request.args.get('type', None)
+        
+        # Página e limite para paginação
+        page = int(request.args.get('page', 1))
+        limit = int(request.args.get('limit', 100))  # Limitar a 100 moedas por página
+        
+        client = Client(api_key, api_secret)
+        
+        # Obter informações de todos os símbolos
+        exchange_info = client.get_exchange_info()
+        symbols = exchange_info['symbols']
+        
+        # Obter preços atuais
+        tickers = client.get_all_tickers()
+        price_map = {ticker['symbol']: ticker['price'] for ticker in tickers}
+        
+        # Obter lista de moedas de cada tipo
+        all_coins = []
+        
+        # Categorizar moedas
+        categories = {
+            'USDT': [],    # Stablecoins com USDT
+            'BTC': [],     # Criptomoedas cotadas em BTC
+            'ETH': [],     # Criptomoedas cotadas em ETH
+            'BNB': [],     # Criptomoedas cotadas em BNB
+            'BUSD': [],    # Stablecoins com BUSD
+            'FIAT': [],    # Moedas fiduciárias
+            'OTHER': []    # Outras moedas
+        }
+        
+        # Lista de principais memecoins conhecido (pode atualizar conforme necessário)
+        memecoins = ['DOGE', 'SHIB', 'PEPE', 'FLOKI', 'BABYDOGE', 'ELON', 'SAMO', 'BONK', 'WOJAK']
+        
+        for symbol_info in symbols:
+            if symbol_info['status'] != 'TRADING':
+                continue  # Pular símbolos que não estão em negociação
+                
+            symbol = symbol_info['symbol']
+            base_asset = symbol_info['baseAsset']
+            quote_asset = symbol_info['quoteAsset']
+            
+            # Determinar categoria
+            category = 'OTHER'
+            if quote_asset == 'USDT':
+                category = 'USDT'
+            elif quote_asset == 'BTC':
+                category = 'BTC'
+            elif quote_asset == 'ETH':
+                category = 'ETH'
+            elif quote_asset == 'BNB':
+                category = 'BNB'
+            elif quote_asset == 'BUSD':
+                category = 'BUSD'
+            elif quote_asset in ['EUR', 'USD', 'GBP', 'AUD', 'BRL']:
+                category = 'FIAT'
+            
+            # Verificar se é uma memecoin
+            is_memecoin = base_asset in memecoins
+            
+            # Criar objeto de moeda
+            coin_data = {
+                'symbol': symbol,
+                'baseAsset': base_asset,
+                'quoteAsset': quote_asset,
+                'price': price_map.get(symbol, "0"),
+                'category': category,
+                'is_memecoin': is_memecoin
+            }
+            
+            # Adicionar à categoria correspondente
+            categories[category].append(coin_data)
+            
+            # Adicionar à lista completa
+            all_coins.append(coin_data)
+        
+        # Filtrar por tipo se solicitado
+        if coin_type:
+            if coin_type == 'memecoin':
+                filtered_coins = [coin for coin in all_coins if coin['is_memecoin']]
+            else:
+                filtered_coins = categories.get(coin_type.upper(), [])
+        else:
+            filtered_coins = all_coins
+        
+        # Aplicar paginação
+        total_count = len(filtered_coins)
+        total_pages = (total_count + limit - 1) // limit
+        
+        start_idx = (page - 1) * limit
+        end_idx = min(start_idx + limit, total_count)
+        
+        paginated_coins = filtered_coins[start_idx:end_idx]
+        
+        return jsonify({
+            "success": True,
+            "coins": paginated_coins,
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total_items": total_count,
+                "total_pages": total_pages
+            },
+            "categories": {
+                "usdt": len(categories['USDT']),
+                "btc": len(categories['BTC']),
+                "eth": len(categories['ETH']),
+                "bnb": len(categories['BNB']),
+                "busd": len(categories['BUSD']),
+                "fiat": len(categories['FIAT']),
+                "other": len(categories['OTHER']),
+                "memecoin": sum(1 for coin in all_coins if coin['is_memecoin'])
+            }
+        })
+    except BinanceAPIException as e:
+        return jsonify({
+            "success": False,
+            "message": f"Erro na API da Binance: {e.message}",
+            "code": e.code
+        }), 400
+    except Exception as e:
+        logger.error(f"Erro ao obter moedas: {str(e)}")
+        return jsonify({
+            "success": False,
+            "message": f"Erro ao obter moedas: {str(e)}"
+        }), 500 
