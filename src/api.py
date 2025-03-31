@@ -464,13 +464,25 @@ def create_coin():
         if field not in data:
             return jsonify({'success': False, 'error': f'Campo obrigatório ausente: {field}'}), 400
     
-    coin_id = CoinModel.create(
-        symbol=data['symbol'],
+    base_currency = data.get('base_currency', data['symbol'])
+    quote_currency = data.get('quote_currency', 'USDT')
+    trading_pair = data.get('trading_pair', f"{base_currency}{quote_currency}")
+    description = data.get('description', '')
+    
+    result = CoinModel.add_coin(
         name=data['name'],
+        symbol=data['symbol'],
+        base_currency=base_currency,
+        quote_currency=quote_currency,
+        trading_pair=trading_pair,
+        description=description,
         is_active=data['is_active']
     )
     
-    return jsonify({'success': True, 'coin_id': coin_id})
+    if result['success']:
+        return jsonify({'success': True, 'coin_id': result['id']})
+    else:
+        return jsonify({'success': False, 'error': result['error']}), 400
 
 @api_bp.route('/api/coins/<int:coin_id>', methods=['PUT'])
 @login_required
@@ -484,16 +496,26 @@ def update_coin(coin_id):
     if not coin:
         return jsonify({'success': False, 'error': 'Moeda não encontrada'}), 404
     
-    updated = CoinModel.update(
+    base_currency = data.get('base_currency', coin['base_currency'])
+    quote_currency = data.get('quote_currency', coin['quote_currency'])
+    trading_pair = data.get('trading_pair', coin['trading_pair'])
+    description = data.get('description', coin['description'])
+    
+    result = CoinModel.update_coin(
         coin_id=coin_id,
-        symbol=data.get('symbol', coin['symbol']),
         name=data.get('name', coin['name']),
+        symbol=data.get('symbol', coin['symbol']),
+        base_currency=base_currency,
+        quote_currency=quote_currency,
+        trading_pair=trading_pair,
+        description=description,
         is_active=data.get('is_active', coin['is_active'])
     )
     
-    if updated:
+    if result['success']:
         return jsonify({'success': True, 'coin_id': coin_id})
-    return jsonify({'success': False, 'error': 'Erro ao atualizar moeda'}), 500
+    else:
+        return jsonify({'success': False, 'error': result['error']}), 400
 
 @api_bp.route('/api/coins/<int:coin_id>', methods=['DELETE'])
 @login_required
@@ -505,13 +527,67 @@ def delete_coin(coin_id):
     if not coin:
         return jsonify({'success': False, 'error': 'Moeda não encontrada'}), 404
     
-    deleted = CoinModel.delete(coin_id)
+    result = CoinModel.delete_coin(coin_id)
     
-    if deleted:
+    if result['success']:
         return jsonify({'success': True})
-    return jsonify({'success': False, 'error': 'Erro ao excluir moeda'}), 500
+    else:
+        return jsonify({'success': False, 'error': result['error']}), 400
 
 # Endpoints para histórico de simulações
+@api_bp.route('/api/simulation/start', methods=['POST'])
+@login_required
+def start_simulation():
+    try:
+        data = request.get_json()
+        
+        # Verificar dados necessários
+        required_fields = ['stock_code', 'operation_code', 'quantity']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({
+                    'success': False, 
+                    'error': f'Campo obrigatório ausente: {field}'
+                }), 400
+        
+        # Extrair dados
+        stock_code = data.get('stock_code')
+        operation_code = data.get('operation_code')
+        quantity = float(data.get('quantity', 0))
+        volatility_factor = float(data.get('volatility_factor', 0.5))
+        stop_loss = float(data.get('stop_loss', 3.0))
+        acceptable_loss = float(data.get('acceptable_loss', 0))
+        fallback_activated = data.get('fallback_activated', True)
+        
+        # Gerar ID único para a simulação
+        simulation_id = f"sim_{stock_code}_{operation_code}_{int(time.time())}"
+        
+        # Registrar simulação no histórico
+        # Aqui você pode adicionar lógica para iniciar a simulação de fato
+        # Por enquanto, apenas registramos a criação
+        
+        first_trade = {
+            'operation_code': operation_code,
+            'trade_type': 'START',
+            'price': 0,
+            'quantity': quantity,
+            'total_value': 0,
+            'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        
+        # Você pode armazenar esses dados ou iniciar uma thread para simulação
+        # Por simplicidade, apenas retornamos sucesso
+        
+        return jsonify({
+            'success': True,
+            'simulation_id': simulation_id,
+            'message': 'Simulação iniciada com sucesso'
+        })
+        
+    except Exception as e:
+        logger.error(f"Erro ao iniciar simulação: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @api_bp.route('/api/simulation/list', methods=['GET'])
 @login_required
 def list_simulations():
@@ -589,7 +665,7 @@ def logs_stream():
         
         # Enviar heartbeat para manter a conexão ativa
         while True:
-            timestamp = datetime.datetime.now().isoformat()
+            timestamp = datetime.now().isoformat()
             yield f"data: {{\"type\": \"heartbeat\", \"message\": \"Conexão ativa\", \"timestamp\": \"{timestamp}\"}}\n\n"
             time.sleep(10)  # Heartbeat a cada 10 segundos
             
@@ -641,4 +717,75 @@ def init_api(app):
         logger.error(f"Erro ao inicializar API: {str(e)}")
         import traceback
         traceback.print_exc()
-        return False 
+        return False
+
+@api_bp.route('/api/simulation/<simulation_id>/execute', methods=['POST'])
+@login_required
+def execute_simulation(simulation_id):
+    try:
+        # Aqui você implementaria lógica para executar um passo da simulação
+        # Por simplicidade, apenas retornamos sucesso
+        
+        # Simular uma operação de compra
+        current_price = 50000 + (time.time() % 1000)  # Preço aleatório
+        quantity = 0.01
+        
+        # Registrar operação de simulação
+        trade_id = SimulationTradeModel.register_trade(
+            simulation_id=simulation_id,
+            operation_code='BTCUSDT',  # Substitua pelo código real
+            trade_type='BUY',
+            price=current_price,
+            quantity=quantity,
+            total_value=current_price * quantity
+        )
+        
+        return jsonify({
+            'success': True,
+            'trade_id': trade_id,
+            'message': 'Passo de simulação executado com sucesso',
+            'details': {
+                'price': current_price,
+                'quantity': quantity,
+                'total_value': current_price * quantity
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Erro ao executar passo da simulação {simulation_id}: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@api_bp.route('/api/simulation/<simulation_id>/stop', methods=['POST'])
+@login_required
+def stop_simulation(simulation_id):
+    try:
+        # Aqui você implementaria lógica para finalizar a simulação
+        # Por simplicidade, apenas retornamos sucesso
+        
+        # Simular uma operação de venda final
+        current_price = 51000 + (time.time() % 1000)  # Preço aleatório
+        quantity = 0.01
+        
+        # Registrar operação de encerramento
+        trade_id = SimulationTradeModel.register_trade(
+            simulation_id=simulation_id,
+            operation_code='BTCUSDT',  # Substitua pelo código real
+            trade_type='SELL',
+            price=current_price,
+            quantity=quantity,
+            total_value=current_price * quantity
+        )
+        
+        return jsonify({
+            'success': True,
+            'message': 'Simulação finalizada com sucesso',
+            'details': {
+                'final_price': current_price,
+                'quantity': quantity,
+                'total_value': current_price * quantity
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Erro ao finalizar simulação {simulation_id}: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500 
