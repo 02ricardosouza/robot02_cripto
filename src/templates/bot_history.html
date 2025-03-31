@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Histórico de Bots | Robo Trader</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+    <style>
+        .simulation-card {
+            border: 1px solid #ddd;
+            margin-bottom: 15px;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+        }
+        
+        .simulation-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        
+        .card-header {
+            padding: 10px 15px;
+            border-bottom: 1px solid #ddd;
+            background-color: #f8f9fa;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .card-body {
+            padding: 15px;
+        }
+        
+        .card-footer {
+            padding: 10px 15px;
+            border-top: 1px solid #ddd;
+            background-color: #f8f9fa;
+            text-align: right;
+        }
+        
+        .profit {
+            color: #28a745;
+        }
+        
+        .loss {
+            color: #dc3545;
+        }
+        
+        .neutral {
+            color: #6c757d;
+        }
+        
+        .stats-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .stat-box {
+            flex: 1;
+            min-width: 150px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #f8f9fa;
+        }
+        
+        .stat-title {
+            font-size: 0.9rem;
+            color: #6c757d;
+            margin-bottom: 5px;
+        }
+        
+        .stat-value {
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+        
+        .simulation-details {
+            display: none;
+            margin-top: 20px;
+        }
+        
+        .trades-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .trades-table th,
+        .trades-table td {
+            padding: 8px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        .trades-table th {
+            background-color: #f1f1f1;
+        }
+        
+        .trades-table tr:hover {
+            background-color: #f8f9fa;
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal-content {
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            max-width: 800px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .modal-close {
+            cursor: pointer;
+            font-size: 1.5rem;
+        }
+        
+        .no-simulations {
+            text-align: center;
+            padding: 40px;
+            color: #6c757d;
+        }
+    </style>
+</head>
+<body>
+    {% include 'nav.html' %}
+    
+    <div class="container">
+        <h1>Histórico de Bots</h1>
+        
+        <div id="loading" class="loading-container">
+            <div class="loader"></div>
+            <p>Carregando histórico...</p>
+        </div>
+        
+        <div id="error-message" class="alert alert-danger" style="display: none;"></div>
+        
+        <div id="bots-container"></div>
+        
+        <div id="details-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 id="modal-title">Detalhes do Bot</h2>
+                    <span class="modal-close">&times;</span>
+                </div>
+                <div id="modal-body">
+                    <!-- O conteúdo será preenchido via JavaScript -->
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const botsContainer = document.getElementById('bots-container');
+            const loadingElement = document.getElementById('loading');
+            const errorElement = document.getElementById('error-message');
+            const detailsModal = document.getElementById('details-modal');
+            const modalTitle = document.getElementById('modal-title');
+            const modalBody = document.getElementById('modal-body');
+            const modalClose = document.querySelector('.modal-close');
+            
+            // Carregar histórico de bots
+            fetch('/api/bot/history/list')
+                .then(response => response.json())
+                .then(data => {
+                    loadingElement.style.display = 'none';
+                    
+                    if (!data.success) {
+                        errorElement.textContent = `Erro ao carregar histórico: ${data.error || 'Falha no servidor'}`;
+                        errorElement.style.display = 'block';
+                        return;
+                    }
+                    
+                    const bots = data.bots || [];
+                    
+                    if (bots.length === 0) {
+                        botsContainer.innerHTML = `
+                            <div class="no-simulations">
+                                <i class="material-icons" style="font-size: 48px;">history</i>
+                                <h3>Nenhum histórico de bot encontrado</h3>
+                                <p>Quando você executar operações com o bot real, o histórico aparecerá aqui.</p>
+                            </div>
+                        `;
+                        return;
+                    }
+                    
+                    // Renderizar cards para cada bot
+                    bots.forEach(bot => {
+                        const profitLoss = parseFloat(bot.profit_loss).toFixed(4);
+                        const profitLossClass = profitLoss > 0 ? 'profit' : profitLoss < 0 ? 'loss' : 'neutral';
+                        const profitLossPercentage = parseFloat(bot.profit_loss_percentage).toFixed(2);
+                        
+                        const botCard = document.createElement('div');
+                        botCard.className = 'simulation-card';
+                        botCard.innerHTML = `
+                            <div class="card-header">
+                                <div>
+                                    <strong>${bot.stock_code}/${bot.operation_code}</strong>
+                                    <span class="badge">ID: ${bot.id}</span>
+                                </div>
+                                <span class="${profitLossClass}">
+                                    ${profitLoss > 0 ? '+' : ''}${profitLoss} (${profitLossPercentage}%)
+                                </span>
+                            </div>
+                            <div class="card-body">
+                                <div>
+                                    <p><strong>Operações:</strong> ${bot.trades_count}</p>
+                                    <p><strong>Iniciado em:</strong> ${new Date(bot.created_at).toLocaleString()}</p>
+                                    <p><strong>Última operação:</strong> ${new Date(bot.updated_at).toLocaleString()}</p>
+                                </div>
+                            </div>
+                            <div class="card-footer">
+                                <button class="button button-primary view-details" data-id="${bot.id}">Ver Detalhes</button>
+                            </div>
+                        `;
+                        
+                        botsContainer.appendChild(botCard);
+                    });
+                    
+                    // Adicionar eventos aos botões de detalhes
+                    document.querySelectorAll('.view-details').forEach(button => {
+                        button.addEventListener('click', function() {
+                            const botId = this.getAttribute('data-id');
+                            showBotDetails(botId);
+                        });
+                    });
+                })
+                .catch(error => {
+                    loadingElement.style.display = 'none';
+                    errorElement.textContent = `Erro ao carregar histórico: ${error.message}`;
+                    errorElement.style.display = 'block';
+                    console.error('Erro:', error);
+                });
+            
+            // Função para mostrar detalhes do bot
+            function showBotDetails(botId) {
+                // Mostrar carregamento no modal
+                modalBody.innerHTML = `
+                    <div class="loading-container">
+                        <div class="loader"></div>
+                        <p>Carregando detalhes...</p>
+                    </div>
+                `;
+                
+                modalTitle.textContent = `Detalhes do Bot (ID: ${botId})`;
+                detailsModal.style.display = 'flex';
+                
+                // Carregar detalhes do bot
+                fetch(`/api/bot/history/${botId}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (!data.success) {
+                            modalBody.innerHTML = `
+                                <div class="alert alert-danger">
+                                    Erro ao carregar detalhes: ${data.error || 'Falha no servidor'}
+                                </div>
+                            `;
+                            return;
+                        }
+                        
+                        const { trades, statistics, details } = data;
+                        
+                        // Definir classes de estilo com base no lucro/prejuízo
+                        const profitLossClass = statistics.profit_loss > 0 ? 'profit' : statistics.profit_loss < 0 ? 'loss' : 'neutral';
+                        
+                        // Renderizar estatísticas
+                        let statsHtml = `
+                            <h3>Estatísticas</h3>
+                            <div class="stats-container">
+                                <div class="stat-box">
+                                    <div class="stat-title">Total de Operações</div>
+                                    <div class="stat-value neutral">${statistics.total_trades}</div>
+                                </div>
+                                <div class="stat-box">
+                                    <div class="stat-title">Compras</div>
+                                    <div class="stat-value neutral">${statistics.buy_trades}</div>
+                                </div>
+                                <div class="stat-box">
+                                    <div class="stat-title">Vendas</div>
+                                    <div class="stat-value neutral">${statistics.sell_trades}</div>
+                                </div>
+                                <div class="stat-box">
+                                    <div class="stat-title">Lucro/Prejuízo</div>
+                                    <div class="stat-value ${profitLossClass}">${parseFloat(statistics.profit_loss).toFixed(4)}</div>
+                                </div>
+                                <div class="stat-box">
+                                    <div class="stat-title">Percentual</div>
+                                    <div class="stat-value ${profitLossClass}">${parseFloat(statistics.profit_loss_percentage).toFixed(2)}%</div>
+                                </div>
+                            </div>
+                            <div class="stats-container">
+                                <div class="stat-box">
+                                    <div class="stat-title">Total de Compras</div>
+                                    <div class="stat-value neutral">${parseFloat(statistics.total_buy_value).toFixed(4)}</div>
+                                </div>
+                                <div class="stat-box">
+                                    <div class="stat-title">Total de Vendas</div>
+                                    <div class="stat-value neutral">${parseFloat(statistics.total_sell_value).toFixed(4)}</div>
+                                </div>
+                            </div>
+                        `;
+                        
+                        // Renderizar tabela de operações
+                        let tradesHtml = `
+                            <h3>Operações</h3>
+                            <table class="trades-table">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Data/Hora</th>
+                                        <th>Tipo</th>
+                                        <th>Preço</th>
+                                        <th>Quantidade</th>
+                                        <th>Valor Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                        `;
+                        
+                        trades.forEach(trade => {
+                            const tradeTypeClass = trade.trade_type === 'BUY' ? 'loss' : 'profit';
+                            const tradeTypeText = trade.trade_type === 'BUY' ? 'Compra' : 'Venda';
+                            
+                            tradesHtml += `
+                                <tr>
+                                    <td>${trade.id}</td>
+                                    <td>${new Date(trade.timestamp).toLocaleString()}</td>
+                                    <td class="${tradeTypeClass}">${tradeTypeText}</td>
+                                    <td>${parseFloat(trade.price).toFixed(4)}</td>
+                                    <td>${parseFloat(trade.quantity).toFixed(8)}</td>
+                                    <td>${parseFloat(trade.total_value).toFixed(4)}</td>
+                                </tr>
+                            `;
+                        });
+                        
+                        tradesHtml += `
+                                </tbody>
+                            </table>
+                        `;
+                        
+                        // Renderizar detalhes do bot
+                        const botDetailsHtml = `
+                            <div class="bot-details">
+                                <h3>Informações</h3>
+                                <p><strong>Bot ID:</strong> ${botId}</p>
+                                <p><strong>Par de Operação:</strong> ${details.operation_code}</p>
+                                <p><strong>Moeda Base:</strong> ${details.stock_code}</p>
+                                <p><strong>Primeiro Trade:</strong> ${new Date(statistics.first_trade_date).toLocaleString()}</p>
+                                <p><strong>Último Trade:</strong> ${new Date(statistics.last_trade_date).toLocaleString()}</p>
+                            </div>
+                        `;
+                        
+                        // Combinar tudo
+                        modalBody.innerHTML = botDetailsHtml + statsHtml + tradesHtml;
+                    })
+                    .catch(error => {
+                        modalBody.innerHTML = `
+                            <div class="alert alert-danger">
+                                Erro ao carregar detalhes: ${error.message}
+                            </div>
+                        `;
+                        console.error('Erro:', error);
+                    });
+            }
+            
+            // Fechar modal
+            modalClose.addEventListener('click', function() {
+                detailsModal.style.display = 'none';
+            });
+            
+            // Fechar modal ao clicar fora dele
+            window.addEventListener('click', function(event) {
+                if (event.target === detailsModal) {
+                    detailsModal.style.display = 'none';
+                }
+            });
+        });
+    </script>
+</body>
+</html> 

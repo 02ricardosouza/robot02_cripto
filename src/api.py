@@ -33,6 +33,7 @@ sys.path.insert(0, current_dir)
 from Models.AssetStartModel import AssetStartModel
 from Models.CoinModel import CoinModel
 from Models.SimulationTradeModel import SimulationTradeModel
+from Models.BotTradeModel import BotTradeModel
 from modules.BinanceRobot import BinanceTraderBot
 
 # Configurações globais
@@ -580,6 +581,9 @@ def start_bot():
                     "code": "invalid_bot_instance"
                 }), 500
             
+            # Definir o ID do bot para o histórico
+            bot.bot_id = bot_id
+            
             # Adicionar bot à lista de robôs em execução
             with bots_lock:
                 running_bots[bot_id] = bot
@@ -959,6 +963,7 @@ def init_models():
         logger.info("Inicializando modelos de dados...")
         CoinModel.init_db()
         SimulationTradeModel.init_db()
+        BotTradeModel.init_db()  # Inicializar o modelo do bot real
         logger.info("Modelos inicializados com sucesso!")
         return True
     except Exception as e:
@@ -980,6 +985,7 @@ def init_api(app):
                     {'title': 'Dashboard', 'url': '/', 'icon': 'dashboard'},
                     {'title': 'Logs', 'url': '/logs', 'icon': 'receipt_long'},
                     {'title': 'Histórico de Simulações', 'url': '/simulation/history', 'icon': 'insights'},
+                    {'title': 'Histórico de Bots', 'url': '/bot/history', 'icon': 'history'},
                     {'title': 'Moedas', 'url': '/coins', 'icon': 'currency_bitcoin', 'admin_only': True},
                     {'title': 'Diagnóstico', 'url': '/diagnostico-page', 'icon': 'health_and_safety'}
                 ]
@@ -1351,4 +1357,70 @@ def get_binance_coins():
         return jsonify({
             "success": False,
             "message": f"Erro ao obter moedas: {str(e)}"
-        }), 500 
+        }), 500
+
+# Adicionar rota para a página de histórico de bots
+@api_bp.route('/bot/history')
+@login_required
+def bot_history_page():
+    return render_template('bot_history.html')
+
+# Endpoint para listar histórico de bots
+@api_bp.route('/api/bot/history/list', methods=['GET'])
+@login_required
+def list_bot_history():
+    try:
+        # Obter histórico de bots usando o modelo
+        bots = BotTradeModel.get_all_bots()
+        
+        return jsonify({
+            'success': True,
+            'bots': bots
+        })
+        
+    except Exception as e:
+        logger.error(f"Erro ao listar histórico de bots: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# Endpoint para obter detalhes de um bot específico
+@api_bp.route('/api/bot/history/<bot_id>', methods=['GET'])
+@login_required
+def get_bot_history(bot_id):
+    try:
+        # Buscar trades do bot
+        trades = BotTradeModel.get_trades_by_bot(bot_id)
+        
+        if not trades:
+            return jsonify({
+                'success': False,
+                'error': 'Bot não encontrado ou sem operações'
+            }), 404
+        
+        # Obter estatísticas
+        statistics = BotTradeModel.get_bot_statistics(bot_id)
+        
+        # Obter detalhes adicionais do bot, se disponível
+        bot_details = {}
+        for trade in trades:
+            bot_details['operation_code'] = trade['operation_code']
+            break
+            
+        # Extrair códigos de operação e stock do formato bot_id: BTCUSDT_BTC_timestamp
+        parts = bot_id.split('_')
+        operation_code = parts[0] if len(parts) > 0 else ""
+        stock_code = parts[1] if len(parts) > 1 else ""
+        
+        bot_details['stock_code'] = stock_code
+        bot_details['operation_code'] = operation_code
+        
+        return jsonify({
+            'success': True,
+            'bot_id': bot_id,
+            'trades': trades,
+            'statistics': statistics,
+            'details': bot_details
+        })
+        
+    except Exception as e:
+        logger.error(f"Erro ao obter histórico do bot {bot_id}: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500 

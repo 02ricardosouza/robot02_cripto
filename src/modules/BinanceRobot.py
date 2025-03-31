@@ -441,6 +441,7 @@ class BinanceTraderBot():
                 )
 
                 self.actual_trade_position = True  # Define posição como comprada
+                self.last_operation = "BUY"  # Atualiza a operação
                 createLogOrder(order_buy)  # Cria um log
                 print(f"\nOrdem de COMPRA a mercado enviada com sucesso:")
                 print(order_buy)
@@ -449,6 +450,28 @@ class BinanceTraderBot():
                 import api
                 if hasattr(api, 'add_log_message'):
                     api.add_log_message(f"COMPRA a mercado de {quantity} {self.stock_code} executada com sucesso", "buy")
+                
+                # Registrar a operação no histórico
+                try:
+                    from Models.BotTradeModel import BotTradeModel
+                    if hasattr(self, 'bot_id'):  # Verificar se o bot tem ID definido
+                        # Calcular o preço e valor total real
+                        price = float(order_buy['cummulativeQuoteQty']) / float(order_buy['executedQty'])
+                        total_value = float(order_buy['cummulativeQuoteQty'])
+                        quantity = float(order_buy['executedQty'])
+                        
+                        # Registrar a operação no histórico
+                        BotTradeModel.register_trade(
+                            bot_id=self.bot_id,
+                            operation_code=self.operation_code,
+                            trade_type="BUY",
+                            price=price,
+                            quantity=quantity,
+                            total_value=total_value
+                        )
+                        print(f"Operação de compra registrada no histórico para o bot {self.bot_id}")
+                except Exception as e:
+                    print(f"Erro ao registrar operação no histórico: {e}")
                 
                 return order_buy  # Retorna a ordem
 
@@ -536,10 +559,34 @@ class BinanceTraderBot():
                 price = limit_price
             )
             self.actual_trade_position = True  # Atualiza a posição para comprada
+            self.last_operation = "BUY"  # Atualiza a operação
             print(f"\nOrdem COMPRA limitada enviada com sucesso:")
             # print(order_buy)
             if (order_buy is not None):
                 createLogOrder(order_buy) # Cria um log
+                
+                # Registrar a operação no histórico
+                try:
+                    from Models.BotTradeModel import BotTradeModel
+                    if hasattr(self, 'bot_id'):  # Verificar se o bot tem ID definido
+                        # Para ordem limitada, usamos o preço limite
+                        # O valor total é calculado com base na quantidade e preço
+                        price = float(limit_price)
+                        quantity_float = float(quantity)
+                        total_value = price * quantity_float
+                        
+                        # Registrar a operação no histórico
+                        BotTradeModel.register_trade(
+                            bot_id=self.bot_id,
+                            operation_code=self.operation_code,
+                            trade_type="BUY",
+                            price=price,
+                            quantity=quantity_float,
+                            total_value=total_value
+                        )
+                        print(f"Operação de compra limitada registrada no histórico para o bot {self.bot_id}")
+                except Exception as e:
+                    print(f"Erro ao registrar operação no histórico: {e}")
                 
             return order_buy  # Retorna a ordem enviada
         except Exception as e:
@@ -580,6 +627,7 @@ class BinanceTraderBot():
                 )
 
                 self.actual_trade_position = False  # Define posição como vendida
+                self.last_operation = "SELL"  # Atualiza a operação
                 createLogOrder(order_sell)  # Cria um log
                 print(f"\nOrdem de VENDA a mercado enviada com sucesso:")
                 # print(order_sell)
@@ -588,6 +636,28 @@ class BinanceTraderBot():
                 import api
                 if hasattr(api, 'add_log_message'):
                     api.add_log_message(f"VENDA a mercado de {quantity} {self.stock_code} executada com sucesso", "sell")
+                
+                # Registrar a operação no histórico
+                try:
+                    from Models.BotTradeModel import BotTradeModel
+                    if hasattr(self, 'bot_id'):  # Verificar se o bot tem ID definido
+                        # Calcular o preço e valor total real
+                        price = float(order_sell['cummulativeQuoteQty']) / float(order_sell['executedQty'])
+                        total_value = float(order_sell['cummulativeQuoteQty'])
+                        quantity = float(order_sell['executedQty'])
+                        
+                        # Registrar a operação no histórico
+                        BotTradeModel.register_trade(
+                            bot_id=self.bot_id,
+                            operation_code=self.operation_code,
+                            trade_type="SELL",
+                            price=price,
+                            quantity=quantity,
+                            total_value=total_value
+                        )
+                        print(f"Operação de venda registrada no histórico para o bot {self.bot_id}")
+                except Exception as e:
+                    print(f"Erro ao registrar operação no histórico: {e}")
                 
                 return order_sell  # Retorna a ordem
 
@@ -678,9 +748,34 @@ class BinanceTraderBot():
             )
 
             self.actual_trade_position = False  # Atualiza a posição para vendida
+            self.last_operation = "SELL"  # Atualiza a operação
             print(f"\nOrdem VENDA limitada enviada com sucesso:")
             # print(order_sell)
             createLogOrder(order_sell) # Cria um log
+            
+            # Registrar a operação no histórico
+            try:
+                from Models.BotTradeModel import BotTradeModel
+                if hasattr(self, 'bot_id'):  # Verificar se o bot tem ID definido
+                    # Para ordem limitada, usamos o preço limite
+                    # O valor total é calculado com base na quantidade e preço
+                    price = float(limit_price)
+                    quantity_float = float(quantity)
+                    total_value = price * quantity_float
+                    
+                    # Registrar a operação no histórico
+                    BotTradeModel.register_trade(
+                        bot_id=self.bot_id,
+                        operation_code=self.operation_code,
+                        trade_type="SELL",
+                        price=price,
+                        quantity=quantity_float,
+                        total_value=total_value
+                    )
+                    print(f"Operação de venda limitada registrada no histórico para o bot {self.bot_id}")
+            except Exception as e:
+                print(f"Erro ao registrar operação no histórico: {e}")
+            
             return order_sell  # Retorna a ordem enviada
         except Exception as e:
             logging.error(f"Erro ao enviar ordem limitada de VENDA: {e}")
@@ -832,7 +927,7 @@ class BinanceTraderBot():
             # Atualizar last_operation para SELL se a venda for bem-sucedida
             if sell_result:
                 self.last_operation = "SELL"
-                print(f"Operação atualizada para: {self.last_operation} (via Stop Loss)")
+                print(f"Operação atualizada para: {self.last_operation}")
                 
             return True
         return False

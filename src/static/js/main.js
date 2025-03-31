@@ -66,12 +66,16 @@ document.addEventListener('DOMContentLoaded', function() {
             const lastSellPrice = bot.last_sell_price !== null && bot.last_sell_price !== undefined ? 
                 Number(bot.last_sell_price).toFixed(2) : '-';
             
+            // Verificar se wallet_balance existe e é um número
+            const walletBalance = (bot.wallet_balance !== null && bot.wallet_balance !== undefined && !isNaN(Number(bot.wallet_balance))) ? 
+                Number(bot.wallet_balance).toFixed(8) : '0.00000000';
+            
             row.innerHTML = `
                 <td>${bot.stock_code}/${bot.operation_code}</td>
                 <td><span class="badge ${positionClass}">${bot.position}</span></td>
                 <td>${lastBuyPrice}</td>
                 <td>${lastSellPrice}</td>
-                <td>${bot.wallet_balance || 0}</td>
+                <td>${walletBalance}</td>
                 <td>
                     <div class="button-group">
                         <button class="button button-danger btn-stop-bot" data-id="${bot.id}">Parar</button>
