@@ -4,12 +4,12 @@ Este projeto implementa um robô de trading automatizado para a corretora Binanc
 
 ## Resolução de Problema de Indentação
 
-Foi corrigido um problema de indentação no código que causava o erro:
+Foi resolvido um problema de indentação no código que causava o erro:
 ```
 IndentationError: unexpected indent (<string>, line 33)
 ```
 
-A solução foi reescrever o arquivo `api.py` para não usar `exec()` na importação do arquivo `src/api.py` e, em vez disso, reimplementar as principais rotas diretamente.
+A solução foi criar um novo arquivo `run.py` que implementa todas as rotas diretamente, sem usar o comando `exec()` para importar o código de `src/api.py`. Essa abordagem evita problemas de indentação que ocorrem quando se tenta executar código dinâmico com `exec()`.
 
 ## Requisitos
 
@@ -34,7 +34,7 @@ pip install -r requirements.txt
    Crie um arquivo `.env` na raiz do projeto com o seguinte conteúdo:
    ```
    FLASK_ENV=production
-   FLASK_APP=src.run_api
+   FLASK_APP=run.py
    PYTHONUNBUFFERED=1
    PYTHONDONTWRITEBYTECODE=1
    SECRET_KEY=sua_chave_secreta_aqui
@@ -58,7 +58,7 @@ pip install -r requirements.txt
 Para iniciar a aplicação localmente:
 
 ```
-python api.py
+python run.py
 ```
 
 Acesse a interface web em: http://localhost:5000
@@ -85,7 +85,7 @@ docker run -p 5000:5000 --env-file .env robo-trading
 
 ## Implantação no EasyPanel
 
-1. Adicione todos os arquivos ao repositório Git (incluindo os arquivos atualizados)
+1. Adicione todos os arquivos ao repositório Git (incluindo os arquivos run.py e start.sh atualizados)
 2. Configure o EasyPanel para usar o seu repositório
 3. Configure as variáveis de ambiente (especialmente as chaves da Binance)
 4. Defina a porta externa 5000
@@ -109,6 +109,14 @@ Se você continuar enfrentando problemas, tente executar o script de verificaç�
 ```
 python src/check_binance.py
 ```
+
+## Arquivos Principais
+
+- `run.py` - Arquivo de entrada principal da aplicação
+- `Dockerfile` - Configuração para construir a imagem Docker
+- `start.sh` - Script de inicialização usado pelo Docker
+- `src/` - Diretório com os módulos do projeto
+- `.env` - Variáveis de ambiente (criar manualmente)
 
 ## Suporte
 

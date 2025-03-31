@@ -51,6 +51,19 @@ echo "- Variáveis de ambiente: PYTHONPATH=$PYTHONPATH"
 echo "🧪 Testando conexão com a Binance..."
 python src/check_binance.py || echo "⚠️ Não foi possível conectar à Binance. Prosseguindo com o inicialização do servidor..."
 
-# Iniciar a aplicação
-echo "🚀 Iniciando a API..."
-exec python api.py 
+# Verificar se o arquivo run.py existe
+if [ -f "run.py" ]; then
+  # Iniciar a aplicação usando o novo run.py
+  echo "🚀 Iniciando a API com o novo arquivo run.py..."
+  exec python run.py
+else
+  # Arquivo run.py não encontrado, tenta usar api.py
+  echo "⚠️ Arquivo run.py não encontrado. Tentando iniciar com api.py..."
+  if [ -f "api.py" ]; then
+    echo "🚀 Iniciando a API com api.py..."
+    exec python api.py
+  else
+    echo "❌ Nenhum arquivo de inicialização (run.py ou api.py) encontrado!"
+    exit 1
+  fi
+fi 
