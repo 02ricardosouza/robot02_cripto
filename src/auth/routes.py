@@ -39,7 +39,7 @@ def login():
             
             if user and bcrypt.check_password_hash(user.password, password):
                 login_user(user)
-                return redirect(url_for('index'))
+                return redirect(url_for('api.index'))
             
             flash('Usuário ou senha inválidos', 'danger')
             
@@ -56,7 +56,7 @@ def logout():
 def register():
     # Apenas administradores podem registrar novos usuários
     if not current_user.is_admin:
-        return redirect(url_for('index'))
+        return redirect(url_for('api.index'))
     
     if request.method == 'POST':
         username = request.form.get('username')
@@ -172,6 +172,6 @@ def change_password():
         conn.close()
         
         flash('Senha alterada com sucesso', 'success')
-        return redirect(url_for('index'))
+        return redirect(url_for('api.index'))
     
     return render_template('change_password.html') 
