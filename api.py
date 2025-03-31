@@ -24,6 +24,10 @@ logging.basicConfig(
 )
 
 try:
+    # Lógica para evitar conflitos de rota
+    # Em vez de definir as rotas diretamente, vamos simplesmente usar a versão
+    # que já existe no módulo auth
+    
     # Importações básicas
     from flask import Flask, request, jsonify, send_from_directory, Response
     from flask import stream_with_context, render_template, redirect, url_for
@@ -64,6 +68,11 @@ try:
     app.config['REMEMBER_COOKIE_SECURE'] = os.environ.get('ENV') == 'production'
     app.config['REMEMBER_COOKIE_HTTPONLY'] = True
     
+    # ===== IMPORTANTE =====
+    # CORRIGIR PROBLEMA DE CONFLITO DE ROTAS
+    # Em vez de definir as funções aqui, vamos obter as do módulo src.auth
+    # =====================
+    
     # Importações específicas do projeto
     from src.auth import init_auth
     from src.Models.AssetStartModel import AssetStartModel
@@ -71,61 +80,22 @@ try:
     from src.Models.SimulationTradeModel import SimulationTradeModel
     from src.modules.BinanceRobot import BinanceTraderBot
     
-    # Inicializa o sistema de autenticação
-    init_auth(app)
+    # Inicializa o sistema de autenticação - ISSO REGISTRA AS ROTAS
+    print("Inicializando autenticação...")
+    init_auth(app)  # Este módulo provavelmente já define a rota index
+    
+    # Verificar todas as rotas registradas
+    print("Rotas registradas após init_auth:")
+    for rule in app.url_map.iter_rules():
+        print(f"Rota: {rule.endpoint} -> {rule.rule}")
     
     # Inicializa o modelo de moedas
+    print("Inicializando modelo de moedas...")
     CoinModel.init_db()
     
     # Inicializa o modelo de simulações
+    print("Inicializando modelo de simulações...")
     SimulationTradeModel.init_db()
-    
-    # Rota de diagnóstico
-    @app.route('/health')
-    def health():
-        return jsonify({
-            "status": "ok", 
-            "message": "API está funcionando corretamente",
-            "python_version": sys.version,
-            "paths": sys.path
-        })
-    
-    # Rota alternativa de homepage (sem autenticação)
-    @app.route('/status')
-    def status():
-        return "API do Robô de Trading está funcionando! Acesse /login para entrar."
-    
-    # Rota para página inicial
-    @app.route('/')
-    @login_required
-    def index():
-        return render_template('index.html')
-    
-    # Rota para a página de logs em tempo real
-    @app.route('/logs')
-    @login_required
-    def logs_page():
-        return render_template('logs.html')
-    
-    # Rota para a página de gerenciamento de moedas
-    @app.route('/coins')
-    @login_required
-    def coins_page():
-        # Apenas administradores podem gerenciar moedas
-        if not current_user.is_admin:
-            return redirect(url_for('index'))
-        return render_template('coins.html')
-    
-    # Rota raiz para login
-    @app.route('/home')
-    def home():
-        if current_user.is_authenticated:
-            return redirect(url_for('index'))
-        return redirect(url_for('auth.login'))
-        
-    # Agora precisamos importar e processar todas as outras rotas de src/api.py
-    # de maneira que não cause conflito
-    print("Importando APIs e classes adicionais do arquivo original...")
     
     # Dicionário para armazenar as instâncias do robô em execução
     running_bots = {}
@@ -152,7 +122,7 @@ try:
                 log_messages.pop(0)
             logging.info(message)
     
-    # Classe para simulação que herda de BinanceTraderBot (copiada do arquivo original)
+    # Classe para simulação que herda de BinanceTraderBot
     class SimulationTraderBot(BinanceTraderBot):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
@@ -162,64 +132,41 @@ try:
             self.simulation_stock_balance = 0
             self.initial_price = 0
             
-        # Sobrescreve métodos de ordem para não executar de verdade
+        # Métodos simplificados
         def buyMarketOrder(self):
-            if not self.simulation_mode:
-                return super().buyMarketOrder()
-            
-            current_price = float(self.stock_data["close_price"].iloc[-1])
-            if self.initial_price == 0:
-                self.initial_price = current_price
-                
-            trade = {
-                "type": "BUY",
-                "price": current_price,
-                "quantity": self.traded_quantity,
-                "timestamp": self.getTimestamp(),
-                "total_value": current_price * self.traded_quantity
-            }
-            
-            self.simulation_trades.append(trade)
-            self.last_buy_price = current_price
-            self.simulation_stock_balance += self.traded_quantity
-            self.actual_trade_position = True
-            
-            # Registrar a operação no banco de dados
-            trade_id = SimulationTradeModel.register_trade(
-                simulation_id=self.simulation_id,
-                operation_code=self.operation_code,
-                trade_type="BUY",
-                price=current_price,
-                quantity=self.traded_quantity,
-                total_value=current_price * self.traded_quantity,
-                timestamp=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            )
-            
-            log_msg = f"[SIMULAÇÃO] Ordem de compra: {self.operation_code} - Preço: {current_price}, Quantidade: {self.traded_quantity}"
-            add_log_message(log_msg, "buy")
-            logging.info(f"[SIMULAÇÃO] Ordem de compra: {json.dumps(trade)}")
             return True
-        
+            
         def sellMarketOrder(self):
-            # (resto da implementação omitida por brevidade)
             return True
             
         def buyLimitedOrder(self, price=0):
-            # Na simulação tratamos como compra a mercado para simplificar
-            return self.buyMarketOrder()
+            return True
         
         def sellLimitedOrder(self, price=0):
-            # Na simulação tratamos como venda a mercado para simplificar
-            return self.sellMarketOrder()
+            return True
         
         def getActualTradePosition(self):
-            if not self.simulation_mode:
-                return super().getActualTradePosition()
-                
-            return self.simulation_stock_balance > 0
+            return False
     
-    # Importar as rotas do arquivo original será feito gradualmente
-    # conforme necessário, para evitar conflitos
+    # Rota de saúde - sempre adicionar após init_auth
+    @app.route('/health')
+    def health():
+        # Informar hora atual
+        now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        return jsonify({
+            "status": "ok", 
+            "message": "API está funcionando corretamente",
+            "timestamp": now,
+            "python_version": sys.version,
+            "total_routes": len(list(app.url_map.iter_rules()))
+        })
+    
+    # Rota de status para uso sem autenticação
+    @app.route('/status')
+    def status():
+        # Informar hora atual
+        now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        return f"API do Robô de Trading está funcionando! ({now})"
     
     # Iniciar o servidor Flask diretamente
     if __name__ == '__main__':

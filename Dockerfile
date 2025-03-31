@@ -21,7 +21,7 @@ RUN mkdir -p src/logs
 COPY . .
 
 # Adicionar um script para verificar a estrutura de diretórios no contêiner
-RUN echo "#!/bin/bash\necho '📂 Estrutura de diretórios:'\nls -la\necho '📂 Conteúdo da pasta src:'\nls -la src/\necho '🔍 Python path:'\npython -c 'import sys; print(sys.path)'\necho '🚀 Iniciando aplicação...'\nexec python api.py" > start.sh && \
+RUN echo '#!/bin/bash\necho "📂 Estrutura de diretórios:"\nls -la\necho "📂 Conteúdo da pasta src:"\nls -la src/\necho "🔍 Python path:"\npython -c "import sys; print(sys.path)"\necho "🚀 Iniciando aplicação..."\necho "🧨 Verificando rotas..."\npython -c "from flask import Flask; app = Flask(__name__); from src.auth import init_auth; init_auth(app); print(\"Rotas no app após init_auth:\", [rule.endpoint for rule in app.url_map.iter_rules()])"\nexec python api.py' > start.sh && \
     chmod +x start.sh
 
 # Expor porta
