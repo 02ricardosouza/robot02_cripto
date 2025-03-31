@@ -92,7 +92,35 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Iniciar um bot
-    function startBot(formData) {
+    function startBot() {
+        console.log("Iniciando bot...");
+        const stockCode = document.getElementById('stock-code').value.trim();
+        const operationCode = document.getElementById('operation-code').value.trim();
+        const tradedQuantity = parseFloat(document.getElementById('traded-quantity').value);
+        
+        // Dados adicionais (opcionais)
+        const volatilityFactor = parseFloat(document.getElementById('volatility')?.value || 0.5);
+        const stopLoss = parseFloat(document.getElementById('stop-loss')?.value || 3);
+        const acceptableLoss = parseFloat(document.getElementById('acceptable-loss')?.value || 0);
+        const fallbackActivated = document.getElementById('fallback')?.checked || true;
+        
+        if (!stockCode || !operationCode || isNaN(tradedQuantity) || tradedQuantity <= 0) {
+            showAlert('danger', 'Preencha todos os campos corretamente');
+            return;
+        }
+        
+        const formData = {
+            symbol: operationCode,
+            operation_mode: stockCode,
+            traded_quantity: tradedQuantity,
+            volatility_factor: volatilityFactor,
+            stop_loss: stopLoss,
+            acceptable_loss: acceptableLoss,
+            fallback_activated: fallbackActivated
+        };
+        
+        console.log("Dados enviados:", formData);
+        
         fetch('/api/bot/start', {
             method: 'POST',
             headers: {
@@ -102,6 +130,7 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .then(response => response.json())
         .then(data => {
+            console.log("Resposta:", data);
             if (data.success) {
                 showAlert('success', `Bot ${data.bot_id} iniciado com sucesso!`);
                 botForm.reset();
@@ -706,13 +735,7 @@ document.addEventListener('DOMContentLoaded', function() {
             botForm.addEventListener('submit', function(e) {
                 e.preventDefault();
                 
-                const formData = {
-                    symbol: document.getElementById('bot-symbol').value,
-                    operation_mode: document.getElementById('bot-operation-mode').value,
-                    traded_quantity: parseFloat(document.getElementById('bot-quantity').value)
-                };
-                
-                startBot(formData);
+                startBot();
             });
         }
         

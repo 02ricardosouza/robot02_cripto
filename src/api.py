@@ -428,7 +428,7 @@ def start_bot():
         # Verificar se o robô já está em execução
         with bots_lock:
             for existing_bot_id, bot in running_bots.items():
-                if bot.symbol == symbol and bot.operation_mode == operation_mode:
+                if bot.operation_code == symbol and bot.stock_code == operation_mode:
                     return jsonify({
                         "success": False,
                         "error": f"Já existe um robô em execução para {symbol} com modo {operation_mode}",
