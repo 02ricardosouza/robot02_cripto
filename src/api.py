@@ -93,6 +93,22 @@ class SimulationTraderBot(BinanceTraderBot):
     
     def getActualTradePosition(self):
         return False
+    
+    def run(self):
+        """Método para compatibilidade com o bot real. 
+        Nas simulações, este método não é usado, pois as operações são 
+        executadas manualmente passo a passo pelo usuário."""
+        logger.info(f"Bot de simulação iniciado para {self.operation_code}")
+        while True:
+            # Em simulações, não fazemos nada aqui, pois as operações
+            # são controladas pelo usuário através da interface
+            time.sleep(60)  # Dormir para não consumir CPU
+            
+    def stop(self):
+        """Método para interromper o funcionamento do bot."""
+        logger.info(f"Bot de simulação {self.operation_code} sendo finalizado")
+        # Não precisamos fazer nada especial aqui para simulações
+        return True
 
 # Rota principal
 @api_bp.route('/')
