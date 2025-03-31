@@ -102,12 +102,17 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .then(response => response.json())
         .then(data => {
-            if (data.status === 'success') {
+            if (data.success) {
                 showAlert('success', `Bot ${data.bot_id} iniciado com sucesso!`);
                 botForm.reset();
                 fetchStatus(); // Atualiza a lista de bots
             } else {
-                showAlert('danger', `Erro: ${data.message}`);
+                // Verificar se é erro de saldo insuficiente
+                if (data.code === 'insufficient_balance') {
+                    showInsufficientBalanceError(data);
+                } else {
+                    showAlert('danger', `Erro: ${data.error || data.message || 'Falha ao iniciar bot'}`);
+                }
             }
         })
         .catch(error => {

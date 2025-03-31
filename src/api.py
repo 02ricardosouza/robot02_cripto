@@ -243,11 +243,29 @@ def api_status():
             except:
                 binance_status = "error"
         
+        # Obter bots ativos
+        active_bots = []
+        with bots_lock:
+            for bot_id, bot in running_bots.items():
+                try:
+                    active_bots.append({
+                        "id": bot_id,
+                        "stock_code": bot.symbol.split('/')[0] if '/' in bot.symbol else bot.symbol,
+                        "operation_code": bot.operation_mode,
+                        "position": bot.last_operation == "BUY" and "Comprado" or "Vendido",
+                        "last_buy_price": bot.buy_price,
+                        "last_sell_price": bot.sell_price,
+                        "wallet_balance": bot.wallet_balance
+                    })
+                except Exception as e:
+                    logger.error(f"Erro ao obter detalhes do bot {bot_id}: {str(e)}")
+                    
         return jsonify({
             "status": "ok",
             "server_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "binance_connection": binance_status,
-            "version": "1.0.0"
+            "version": "1.0.0",
+            "active_bots": active_bots
         })
     except Exception as e:
         return jsonify({
@@ -675,26 +693,65 @@ def start_simulation():
         simulation_id = f"sim_{stock_code}_{operation_code}_{int(time.time())}"
         
         # Registrar simulação no histórico
-        # Aqui você pode adicionar lógica para iniciar a simulação de fato
-        # Por enquanto, apenas registramos a criação
+        # Por simplicidade, vamos registrar um trade inicial
+        trade_id = SimulationTradeModel.register_trade(
+            simulation_id=simulation_id,
+            operation_code=operation_code,
+            trade_type='START',
+            price=0,  # preço inicial será obtido na primeira execução
+            quantity=quantity,
+            total_value=0
+        )
         
-        first_trade = {
-            'operation_code': operation_code,
-            'trade_type': 'START',
-            'price': 0,
-            'quantity': quantity,
-            'total_value': 0,
-            'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
-        
-        # Você pode armazenar esses dados ou iniciar uma thread para simulação
-        # Por simplicidade, apenas retornamos sucesso
-        
-        return jsonify({
-            'success': True,
-            'simulation_id': simulation_id,
-            'message': 'Simulação iniciada com sucesso'
-        })
+        # Criar um bot de simulação e armazená-lo
+        try:
+            # Obter preço atual da moeda
+            api_key = os.environ.get('BINANCE_API_KEY')
+            api_secret = os.environ.get('BINANCE_SECRET_KEY')
+            
+            if api_key and api_secret and api_key != 'sua_api_key_aqui' and api_secret != 'sua_secret_key_aqui':
+                client = Client(api_key, api_secret)
+                ticker = client.get_ticker(symbol=operation_code)
+                current_price = float(ticker['lastPrice'])
+            else:
+                # Valor fictício para teste se não tiver API
+                current_price = 1000.0
+                
+            # Criar bot de simulação
+            sim_bot = SimulationTraderBot(
+                symbol=operation_code,
+                operation_mode=stock_code,
+                api_key=api_key if api_key else '',
+                api_secret=api_secret if api_secret else '',
+                traded_quantity=quantity,
+                volatility_factor=volatility_factor,
+                stop_loss_percentage=stop_loss,
+                acceptable_loss_percentage=acceptable_loss,
+                fallback_activated=fallback_activated
+            )
+            
+            # Configurar valores iniciais
+            sim_bot.simulation_balance = quantity
+            sim_bot.simulation_stock_balance = 0
+            sim_bot.initial_price = current_price
+            
+            # Registrar na lista de simulações ativas
+            with bots_lock:
+                simulation_bots[simulation_id] = sim_bot
+                
+            # Registrar um log
+            add_log_message(f"Simulação iniciada para {operation_code} com modo {stock_code}", "info")
+            
+            return jsonify({
+                'success': True,
+                'simulation_id': simulation_id,
+                'message': 'Simulação iniciada com sucesso',
+                'initial_price': current_price
+            })
+            
+        except Exception as e:
+            logger.error(f"Erro ao configurar simulação: {str(e)}")
+            return jsonify({'success': False, 'error': str(e)}), 500
         
     except Exception as e:
         logger.error(f"Erro ao iniciar simulação: {str(e)}")
@@ -704,13 +761,24 @@ def start_simulation():
 @login_required
 def list_simulations():
     try:
-        # Como não temos um armazenamento específico para simulações ativas,
-        # vamos retornar todas as simulações disponíveis
-        simulations = SimulationTradeModel.get_all_simulations()
+        # Retornar simulações ativas
+        active_simulations = []
+        with bots_lock:
+            for sim_id, bot in simulation_bots.items():
+                try:
+                    active_simulations.append({
+                        "id": sim_id,
+                        "stock_code": bot.operation_mode,  # invertido no modo de simulação
+                        "operation_code": bot.symbol,
+                        "initial_price": bot.initial_price,
+                        "quantity": bot.traded_quantity
+                    })
+                except Exception as e:
+                    logger.error(f"Erro ao obter detalhes da simulação {sim_id}: {str(e)}")
         
         return jsonify({
             'success': True,
-            'simulations': simulations
+            'simulations': active_simulations
         })
         
     except Exception as e:
@@ -835,32 +903,105 @@ def init_api(app):
 @login_required
 def execute_simulation(simulation_id):
     try:
-        # Aqui você implementaria lógica para executar um passo da simulação
-        # Por simplicidade, apenas retornamos sucesso
+        # Verificar se a simulação existe
+        with bots_lock:
+            if simulation_id not in simulation_bots:
+                return jsonify({
+                    'success': False,
+                    'error': 'Simulação não encontrada'
+                }), 404
+            
+            sim_bot = simulation_bots[simulation_id]
         
-        # Simular uma operação de compra
-        current_price = 50000 + (time.time() % 1000)  # Preço aleatório
-        quantity = 0.01
+        # Obter preço atual (pode ser o preço real ou simulado)
+        try:
+            api_key = os.environ.get('BINANCE_API_KEY')
+            api_secret = os.environ.get('BINANCE_SECRET_KEY')
+            
+            if api_key and api_secret and api_key != 'sua_api_key_aqui' and api_secret != 'sua_secret_key_aqui':
+                client = Client(api_key, api_secret)
+                ticker = client.get_ticker(symbol=sim_bot.symbol)
+                current_price = float(ticker['lastPrice'])
+            else:
+                # Simular variação de preço para testes
+                base_price = sim_bot.initial_price
+                variation = (float(time.time() % 100) / 100 - 0.5) * 0.02  # Variação de ±1%
+                current_price = base_price * (1 + variation)
+        except Exception as e:
+            logger.error(f"Erro ao obter preço atual: {str(e)}")
+            # Caso falhe, usar um preço com pequena variação baseado no último
+            last_price = 1000  # valor padrão
+            if hasattr(sim_bot, 'last_price') and sim_bot.last_price:
+                last_price = sim_bot.last_price
+            variation = (float(time.time() % 100) / 100 - 0.5) * 0.01  # Variação de ±0.5%
+            current_price = last_price * (1 + variation)
         
-        # Registrar operação de simulação
+        # Atualizar o preço atual do bot
+        sim_bot.last_price = current_price
+        
+        # Simular decisão de compra ou venda
+        current_position = sim_bot.last_operation == "BUY"  # True se comprado, False se vendido
+        
+        # Lógica simplificada para decisão
+        sim_bot.canActivateSellOrder = lambda: not current_position
+        sim_bot.canActivateBuyOrder = lambda: current_position
+        
+        # Definir uma operação de acordo com regras simples
+        decision = None
+        trade_type = None
+        
+        # Se não tivermos uma operação anterior, começar com compra
+        if not hasattr(sim_bot, 'last_operation') or not sim_bot.last_operation:
+            decision = "BUY"
+            trade_type = "BUY"
+        else:
+            # Alternar entre compra e venda para simular operações
+            decision = "SELL" if sim_bot.last_operation == "BUY" else "BUY"
+            trade_type = decision
+        
+        # Aplicar a decisão
+        sim_bot.last_operation = decision
+        
+        # Calcular valores (simplificados para simulação)
+        quantity = sim_bot.traded_quantity
+        total_value = current_price * quantity
+        
+        # Registrar operação no histórico
         trade_id = SimulationTradeModel.register_trade(
             simulation_id=simulation_id,
-            operation_code='BTCUSDT',  # Substitua pelo código real
-            trade_type='BUY',
+            operation_code=sim_bot.symbol,
+            trade_type=trade_type,
             price=current_price,
             quantity=quantity,
-            total_value=current_price * quantity
+            total_value=total_value
         )
+        
+        # Atualizar estatísticas do bot
+        if trade_type == "BUY":
+            sim_bot.simulation_balance -= total_value
+            sim_bot.simulation_stock_balance += quantity
+            sim_bot.buy_price = current_price
+        else:  # SELL
+            sim_bot.simulation_balance += total_value
+            sim_bot.simulation_stock_balance -= quantity
+            sim_bot.sell_price = current_price
+        
+        # Calcular lucro/prejuízo
+        profit_loss = 0
+        if hasattr(sim_bot, 'buy_price') and sim_bot.buy_price and hasattr(sim_bot, 'sell_price') and sim_bot.sell_price:
+            price_diff = sim_bot.sell_price - sim_bot.buy_price
+            profit_loss = price_diff * quantity
         
         return jsonify({
             'success': True,
             'trade_id': trade_id,
-            'message': 'Passo de simulação executado com sucesso',
-            'details': {
-                'price': current_price,
-                'quantity': quantity,
-                'total_value': current_price * quantity
-            }
+            'simulation_id': simulation_id,
+            'position': 'Comprado' if sim_bot.last_operation == 'BUY' else 'Vendido',
+            'price': current_price,
+            'quantity': quantity,
+            'total_value': total_value,
+            'profit_loss': profit_loss,
+            'message': f'Simulação executada com sucesso. Operação: {trade_type}'
         })
         
     except Exception as e:
@@ -871,31 +1012,96 @@ def execute_simulation(simulation_id):
 @login_required
 def stop_simulation(simulation_id):
     try:
-        # Aqui você implementaria lógica para finalizar a simulação
-        # Por simplicidade, apenas retornamos sucesso
+        # Verificar se a simulação existe
+        with bots_lock:
+            if simulation_id not in simulation_bots:
+                return jsonify({
+                    'success': False,
+                    'error': 'Simulação não encontrada'
+                }), 404
+            
+            sim_bot = simulation_bots[simulation_id]
         
-        # Simular uma operação de venda final
-        current_price = 51000 + (time.time() % 1000)  # Preço aleatório
-        quantity = 0.01
+        # Obter preço atual para finalização
+        try:
+            api_key = os.environ.get('BINANCE_API_KEY')
+            api_secret = os.environ.get('BINANCE_SECRET_KEY')
+            
+            if api_key and api_secret and api_key != 'sua_api_key_aqui' and api_secret != 'sua_secret_key_aqui':
+                client = Client(api_key, api_secret)
+                ticker = client.get_ticker(symbol=sim_bot.symbol)
+                current_price = float(ticker['lastPrice'])
+            else:
+                # Usar preço atual armazenado ou base
+                current_price = sim_bot.last_price if hasattr(sim_bot, 'last_price') and sim_bot.last_price else sim_bot.initial_price
+        except Exception as e:
+            logger.error(f"Erro ao obter preço final: {str(e)}")
+            current_price = sim_bot.last_price if hasattr(sim_bot, 'last_price') and sim_bot.last_price else 1000
         
-        # Registrar operação de encerramento
-        trade_id = SimulationTradeModel.register_trade(
-            simulation_id=simulation_id,
-            operation_code='BTCUSDT',  # Substitua pelo código real
-            trade_type='SELL',
-            price=current_price,
-            quantity=quantity,
-            total_value=current_price * quantity
-        )
+        # Se o bot estiver comprado, realizar venda final para fechar posição
+        if hasattr(sim_bot, 'last_operation') and sim_bot.last_operation == "BUY" and sim_bot.simulation_stock_balance > 0:
+            quantity = sim_bot.simulation_stock_balance
+            total_value = current_price * quantity
+            
+            # Registrar operação final
+            SimulationTradeModel.register_trade(
+                simulation_id=simulation_id,
+                operation_code=sim_bot.symbol,
+                trade_type='SELL_FINAL',
+                price=current_price,
+                quantity=quantity,
+                total_value=total_value
+            )
+            
+            # Atualizar estatísticas
+            sim_bot.simulation_balance += total_value
+            sim_bot.simulation_stock_balance = 0
+            sim_bot.sell_price = current_price
+            sim_bot.last_operation = "SELL"
+        
+        # Obter todas as operações
+        trades = SimulationTradeModel.get_trades_by_simulation(simulation_id)
+        
+        # Calcular estatísticas
+        buy_trades = [t for t in trades if t['trade_type'] in ['BUY', 'BUY_MARKET']]
+        sell_trades = [t for t in trades if t['trade_type'] in ['SELL', 'SELL_MARKET', 'SELL_FINAL']]
+        
+        total_buy_value = sum(float(t['total_value']) for t in buy_trades)
+        total_sell_value = sum(float(t['total_value']) for t in sell_trades)
+        
+        profit_loss = total_sell_value - total_buy_value
+        profit_loss_percentage = 0
+        
+        if total_buy_value > 0:
+            profit_loss_percentage = (profit_loss / total_buy_value) * 100
+        
+        # Registrar resultados finais
+        results = {
+            'buys': len(buy_trades),
+            'sells': len(sell_trades),
+            'total_buy_value': total_buy_value,
+            'total_sell_value': total_sell_value,
+            'profit_loss': profit_loss,
+            'profit_loss_percentage': profit_loss_percentage,
+            'stock_balance': sim_bot.simulation_stock_balance,
+            'wallet_balance': sim_bot.simulation_balance,
+            'current_price': current_price,
+            'initial_price': sim_bot.initial_price
+        }
+        
+        # Remover o bot de simulação da lista
+        with bots_lock:
+            del simulation_bots[simulation_id]
+        
+        # Registrar log
+        add_log_message(f"Simulação {simulation_id} finalizada com resultado: {profit_loss:.2f} ({profit_loss_percentage:.2f}%)", 
+                        "success" if profit_loss >= 0 else "danger")
         
         return jsonify({
             'success': True,
+            'simulation_id': simulation_id,
             'message': 'Simulação finalizada com sucesso',
-            'details': {
-                'final_price': current_price,
-                'quantity': quantity,
-                'total_value': current_price * quantity
-            }
+            'results': results
         })
         
     except Exception as e:

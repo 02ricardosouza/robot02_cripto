@@ -672,90 +672,71 @@
         });
     }
     
-    // Carregar simulações ativas
-    async function loadActiveSimulations() {
-        try {
-            // Busca status do sistema
-            const statusResponse = await fetch('/api/status');
-            if (!statusResponse.ok) {
-                throw new Error('Erro ao carregar status do sistema');
-            }
-            
-            const statusData = await statusResponse.json();
-            
-            // Atualiza a tabela de simulações ativas
-            const tbody = document.querySelector('#simulation-table tbody');
-            
-            if (statusData.active_simulations === 0) {
-                tbody.innerHTML = '<tr><td colspan="3" class="text-center">Nenhuma simulação ativa</td></tr>';
-                return;
-            }
-            
-            // Se houver simulações ativas, busca informações detalhadas
-            const simsResponse = await fetch('/api/simulation/list');
-            if (!simsResponse.ok) {
-                throw new Error('Erro ao carregar lista de simulações');
-            }
-            
-            const simsData = await simsResponse.json();
-            displayActiveSimulations(simsData.simulations);
-            
-        } catch (error) {
-            console.error('Erro ao carregar simulações ativas:', error);
-            const tbody = document.querySelector('#simulation-table tbody');
-            tbody.innerHTML = `<tr><td colspan="3" class="text-center text-danger">Erro ao carregar simulações: ${error.message}</td></tr>`;
-        }
-    }
-    
-    // Exibir simulações ativas
-    function displayActiveSimulations(simulations) {
-        const tbody = document.querySelector('#simulation-table tbody');
-        tbody.innerHTML = '';
+    // Função para carregar simulações ativas
+    function loadActiveSimulations() {
+        const simulationTable = document.getElementById('simulation-table');
+        if (!simulationTable) return Promise.resolve();
         
-        if (!simulations || simulations.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="3" class="text-center">Nenhuma simulação ativa</td></tr>';
-            return;
-        }
-        
-        simulations.forEach(sim => {
-            const row = document.createElement('tr');
-            
-            row.innerHTML = `
-                <td>${sim.id}</td>
-                <td><strong>${sim.operation_code}</strong></td>
-                <td>
-                    <div class="button-group">
-                        <button class="button button-primary btn-execute-sim" data-id="${sim.id}">Executar</button>
-                        <button class="button button-info btn-results-sim" data-id="${sim.id}">Resultados</button>
-                        <button class="button button-danger btn-stop-sim" data-id="${sim.id}">Parar</button>
-                    </div>
-                </td>
-            `;
-            
-            tbody.appendChild(row);
-        });
-        
-        // Adiciona eventos aos botões
-        document.querySelectorAll('.btn-execute-sim').forEach(btn => {
-            btn.addEventListener('click', function() {
-                const simId = this.getAttribute('data-id');
-                executeSimulation(simId);
+        return fetch('/api/simulation/list')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const simulations = data.simulations || [];
+                    const tbody = simulationTable.querySelector('tbody');
+                    tbody.innerHTML = '';
+                    
+                    if (simulations.length === 0) {
+                        const row = document.createElement('tr');
+                        row.innerHTML = '<td colspan="3" class="text-center">Nenhuma simulação em execução</td>';
+                        tbody.appendChild(row);
+                        return;
+                    }
+                    
+                    simulations.forEach(sim => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${sim.id}</td>
+                            <td>${sim.stock_code}/${sim.operation_code}</td>
+                            <td>
+                                <div class="button-group">
+                                    <button class="button button-primary execute-sim" data-id="${sim.id}">Executar</button>
+                                    <button class="button button-secondary results-sim" data-id="${sim.id}">Resultados</button>
+                                    <button class="button button-danger stop-sim" data-id="${sim.id}">Parar</button>
+                                </div>
+                            </td>
+                        `;
+                        tbody.appendChild(row);
+                    });
+                    
+                    // Adicionar eventos aos botões
+                    document.querySelectorAll('.execute-sim').forEach(btn => {
+                        btn.addEventListener('click', function() {
+                            executeSimulation(this.dataset.id);
+                        });
+                    });
+                    
+                    document.querySelectorAll('.results-sim').forEach(btn => {
+                        btn.addEventListener('click', function() {
+                            getSimulationResults(this.dataset.id);
+                        });
+                    });
+                    
+                    document.querySelectorAll('.stop-sim').forEach(btn => {
+                        btn.addEventListener('click', function() {
+                            stopSimulation(this.dataset.id);
+                        });
+                    });
+                } else {
+                    console.error('Erro ao carregar simulações:', data.error);
+                    const tbody = simulationTable.querySelector('tbody');
+                    tbody.innerHTML = `<tr><td colspan="3" class="text-center text-danger">Erro ao carregar simulações: ${data.error}</td></tr>`;
+                }
+            })
+            .catch(error => {
+                console.error('Erro ao carregar simulações:', error);
+                const tbody = simulationTable.querySelector('tbody');
+                tbody.innerHTML = '<tr><td colspan="3" class="text-center text-danger">Erro ao carregar simulações</td></tr>';
             });
-        });
-        
-        document.querySelectorAll('.btn-results-sim').forEach(btn => {
-            btn.addEventListener('click', function() {
-                const simId = this.getAttribute('data-id');
-                getSimulationResults(simId);
-            });
-        });
-        
-        document.querySelectorAll('.btn-stop-sim').forEach(btn => {
-            btn.addEventListener('click', function() {
-                const simId = this.getAttribute('data-id');
-                stopSimulation(simId);
-            });
-        });
     }
     
     // Função para iniciar um bot
