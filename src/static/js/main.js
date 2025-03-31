@@ -94,15 +94,15 @@ document.addEventListener('DOMContentLoaded', function() {
     // Iniciar um bot
     function startBot() {
         console.log("Iniciando bot...");
-        const stockCode = document.getElementById('stock-code').value.trim();
-        const operationCode = document.getElementById('operation-code').value.trim();
-        const tradedQuantity = parseFloat(document.getElementById('traded-quantity').value);
+        const stockCode = document.getElementById('bot-stock-code').value.trim();
+        const operationCode = document.getElementById('bot-operation-code').value.trim();
+        const tradedQuantity = parseFloat(document.getElementById('bot-quantity').value);
         
         // Dados adicionais (opcionais)
-        const volatilityFactor = parseFloat(document.getElementById('volatility')?.value || 0.5);
-        const stopLoss = parseFloat(document.getElementById('stop-loss')?.value || 3);
-        const acceptableLoss = parseFloat(document.getElementById('acceptable-loss')?.value || 0);
-        const fallbackActivated = document.getElementById('fallback')?.checked || true;
+        const volatilityFactor = parseFloat(document.getElementById('bot-volatility')?.value || 0.5);
+        const stopLoss = parseFloat(document.getElementById('bot-stop-loss')?.value || 3);
+        const acceptableLoss = parseFloat(document.getElementById('bot-acceptable-loss')?.value || 0);
+        const fallbackActivated = document.getElementById('bot-fallback')?.checked || true;
         
         if (!stockCode || !operationCode || isNaN(tradedQuantity) || tradedQuantity <= 0) {
             showAlert('danger', 'Preencha todos os campos corretamente');
