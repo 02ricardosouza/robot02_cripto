@@ -827,7 +827,13 @@ class BinanceTraderBot():
             print("🔴 Ativando STOP LOSS...")
             self.cancelAllOrders()
             time.sleep(2)
-            self.sellMarketOrder()
+            sell_result = self.sellMarketOrder()
+            
+            # Atualizar last_operation para SELL se a venda for bem-sucedida
+            if sell_result:
+                self.last_operation = "SELL"
+                print(f"Operação atualizada para: {self.last_operation} (via Stop Loss)")
+                
             return True
         return False
     
@@ -861,6 +867,11 @@ class BinanceTraderBot():
         # Atualiza todos os dados
         self.updateAllData(verbose=True)
 
+        # Atualiza o atributo last_operation com base na posição atual
+        if not hasattr(self, 'last_operation') or self.last_operation is None:
+            self.last_operation = "BUY" if self.actual_trade_position else "SELL"
+            print(f"Definindo operação inicial como: {self.last_operation}")
+        
         print('\n-------')
         print('Detalhes:')
         print(f' - Posição atual: {"Comprado" if self.actual_trade_position else "Vendido"}')
@@ -903,7 +914,13 @@ class BinanceTraderBot():
             print('--------------')   
             print(f'\nCarteira em {self.stock_code} [ANTES]:') 
             self.printStock()          
-            self.buyLimitedOrder()
+            order_result = self.buyLimitedOrder()
+            
+            # Atualizar o atributo last_operation após a ordem
+            if order_result:
+                self.last_operation = "BUY"
+                print(f"Operação atualizada para: {self.last_operation}")
+                
             time.sleep(2)
             self.updateAllData()
             print(f'Carteira em {self.stock_code} [DEPOIS]:')            
@@ -915,7 +932,13 @@ class BinanceTraderBot():
             print('--------------') 
             print(f'\nCarteira em {self.stock_code} [ANTES]:') 
             self.printStock()
-            self.sellLimitedOrder()
+            order_result = self.sellLimitedOrder()
+            
+            # Atualizar o atributo last_operation após a ordem
+            if order_result:
+                self.last_operation = "SELL"
+                print(f"Operação atualizada para: {self.last_operation}")
+                
             time.sleep(2)
             self.updateAllData()
             print(f'\nCarteira em {self.stock_code} [DEPOIS]:') 
@@ -928,6 +951,48 @@ class BinanceTraderBot():
             self.time_to_sleep = self.time_to_trade
 
         print('------------------------------------------------')
+
+    # Método para ser usado como ponto de entrada em uma thread
+    def run(self):
+        """Método para execução contínua do bot em uma thread separada.
+        Este método é chamado pela API quando o bot é iniciado."""
+        print(f"Bot iniciado para {self.operation_code} com modo {self.stock_code}")
+        try:
+            # Inicialização do bot
+            self.updateAllData(verbose=True)
+            
+            # Se não tiver last_operation definido, definir baseado na posição atual
+            if not hasattr(self, 'last_operation') or not self.last_operation:
+                self.last_operation = "BUY" if self.actual_trade_position else "SELL"
+                print(f"Operação inicial definida como: {self.last_operation}")
+            
+            # Loop principal do bot
+            while True:
+                try:
+                    self.execute()
+                    time.sleep(self.time_to_sleep)
+                except Exception as e:
+                    print(f"Erro durante execução do bot: {str(e)}")
+                    import traceback
+                    traceback.print_exc()
+                    time.sleep(60)  # Esperar um minuto antes de tentar novamente
+        except Exception as e:
+            print(f"Bot encerrado com erro: {str(e)}")
+            import traceback
+            traceback.print_exc()
+    
+    # Método para parar o bot
+    def stop(self):
+        """Método para interromper o funcionamento do bot."""
+        print(f"Bot {self.operation_code} sendo finalizado")
+        # Cancelar todas as ordens abertas ao finalizar
+        try:
+            self.cancelAllOrders()
+            print("Todas as ordens foram canceladas")
+            return True
+        except Exception as e:
+            print(f"Erro ao cancelar ordens: {str(e)}")
+            return False
 
 
 

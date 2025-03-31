@@ -264,17 +264,33 @@ def api_status():
         with bots_lock:
             for bot_id, bot in running_bots.items():
                 try:
+                    # Garantir valores default seguros para atributos que podem não existir
+                    last_operation = "NONE"
+                    if hasattr(bot, 'last_operation') and bot.last_operation:
+                        last_operation = bot.last_operation
+                    
                     active_bots.append({
                         "id": bot_id,
                         "stock_code": bot.stock_code,
                         "operation_code": bot.operation_code,
-                        "position": bot.last_operation == "BUY" and "Comprado" or "Vendido",
+                        "position": "Vendido" if last_operation == "SELL" else "Comprado" if last_operation == "BUY" else "Indefinido",
                         "last_buy_price": bot.last_buy_price if hasattr(bot, 'last_buy_price') else 0,
                         "last_sell_price": bot.last_sell_price if hasattr(bot, 'last_sell_price') else 0,
                         "wallet_balance": bot.last_stock_account_balance if hasattr(bot, 'last_stock_account_balance') else 0
                     })
                 except Exception as e:
                     logger.error(f"Erro ao obter detalhes do bot {bot_id}: {str(e)}")
+                    # Adicionar o bot mesmo com erro para que o usuário veja que ele existe
+                    active_bots.append({
+                        "id": bot_id,
+                        "stock_code": bot.stock_code if hasattr(bot, 'stock_code') else "Desconhecido",
+                        "operation_code": bot.operation_code if hasattr(bot, 'operation_code') else "Desconhecido",
+                        "position": "Erro",
+                        "last_buy_price": 0,
+                        "last_sell_price": 0,
+                        "wallet_balance": 0,
+                        "error": str(e)
+                    })
         
         return jsonify({
             "status": "ok",
@@ -397,19 +413,31 @@ def list_bots():
         bots_info = []
         for bot_id, bot in running_bots.items():
             try:
+                # Garantir valores default seguros para atributos que podem não existir
+                last_operation = "NONE"
+                if hasattr(bot, 'last_operation') and bot.last_operation:
+                    last_operation = bot.last_operation
+                    
+                last_price = 0
+                if hasattr(bot, 'last_price') and bot.last_price:
+                    last_price = bot.last_price
+                
                 bot_info = {
                     "id": bot_id,
                     "stock_code": bot.stock_code,
                     "operation_code": bot.operation_code,
-                    "last_operation": bot.last_operation if hasattr(bot, 'last_operation') else "NONE",
-                    "last_price": bot.last_price if hasattr(bot, 'last_price') else 0,
+                    "last_operation": last_operation,
+                    "last_price": last_price,
                     "is_active": True,
                     "start_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 }
                 bots_info.append(bot_info)
             except Exception as e:
+                logger.error(f"Erro ao obter informações do bot {bot_id}: {str(e)}")
                 bots_info.append({
                     "id": bot_id,
+                    "stock_code": bot.stock_code if hasattr(bot, 'stock_code') else "Desconhecido",
+                    "operation_code": bot.operation_code if hasattr(bot, 'operation_code') else "Desconhecido",
                     "error": str(e),
                     "is_active": False
                 })
@@ -556,25 +584,8 @@ def start_bot():
             with bots_lock:
                 running_bots[bot_id] = bot
             
-            # Implementar um método run customizado para o bot
-            def run_bot():
-                logger.info(f"Bot {bot_id} iniciado para {symbol}")
-                try:
-                    while True:
-                        try:
-                            bot.execute()
-                            time.sleep(bot.time_to_sleep)
-                        except Exception as e:
-                            logger.error(f"Erro durante execução do bot {bot_id}: {str(e)}")
-                            time.sleep(60)  # Esperar um minuto antes de tentar novamente
-                except Exception as e:
-                    logger.error(f"Bot {bot_id} encerrado com erro: {str(e)}")
-                    with bots_lock:
-                        if bot_id in running_bots:
-                            del running_bots[bot_id]
-            
-            # Iniciar a thread do robô
-            bot_thread = threading.Thread(target=run_bot)
+            # Iniciar a thread do robô usando o método run implementado na classe
+            bot_thread = threading.Thread(target=bot.run)
             bot_thread.daemon = True
             bot_thread.start()
             
