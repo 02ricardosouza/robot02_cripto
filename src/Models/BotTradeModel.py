@@ -99,48 +99,67 @@ class BotTradeModel:
     def get_bot_statistics(bot_id):
         """
         Calcula estatísticas para um bot específico
-        
+
         Parameters:
             bot_id (str): ID do bot
-        
+
         Returns:
             dict: Dicionário com estatísticas do bot
         """
         trades = BotTradeModel.get_trades_by_bot(bot_id)
-        
+
         if not trades:
             return {
                 "total_trades": 0,
                 "buy_trades": 0,
                 "sell_trades": 0,
-                "total_buy_value": 0,
-                "total_sell_value": 0,
-                "profit_loss": 0,
-                "profit_loss_percentage": 0
+                "total_profit": 0,
+                "profit_percentage": 0,
+                "initial_balance": 0,
+                "final_balance": 0,
+                "highest_price": 0,
+                "lowest_price": 0,
+                "total_buy_volume": 0,
+                "total_sell_volume": 0
             }
-        
+
+        # Contar operações por tipo
         buy_trades = [t for t in trades if t["trade_type"] == "BUY"]
         sell_trades = [t for t in trades if t["trade_type"] == "SELL"]
         
-        total_buy_value = sum(t["total_value"] for t in buy_trades)
-        total_sell_value = sum(t["total_value"] for t in sell_trades)
+        # Calcular valores extremos
+        all_prices = [t["price"] for t in trades]
+        highest_price = max(all_prices) if all_prices else 0
+        lowest_price = min(all_prices) if all_prices else 0
         
-        profit_loss = total_sell_value - total_buy_value
-        profit_loss_percentage = 0
+        # Calcular volumes de compra e venda
+        total_buy_volume = sum(t["total_value"] for t in buy_trades)
+        total_sell_volume = sum(t["total_value"] for t in sell_trades)
         
-        if total_buy_value > 0:
-            profit_loss_percentage = (profit_loss / total_buy_value) * 100
-            
+        # Calcular lucro ou prejuízo
+        total_profit = total_sell_volume - total_buy_volume
+        
+        # Calcular saldo inicial e final (estimados)
+        initial_balance = total_buy_volume if buy_trades else 0
+        final_balance = total_sell_volume if sell_trades else total_buy_volume
+        
+        # Calcular percentual de lucro
+        profit_percentage = 0
+        if initial_balance > 0:
+            profit_percentage = (total_profit / initial_balance) * 100
+        
         return {
             "total_trades": len(trades),
             "buy_trades": len(buy_trades),
             "sell_trades": len(sell_trades),
-            "total_buy_value": total_buy_value,
-            "total_sell_value": total_sell_value,
-            "profit_loss": profit_loss,
-            "profit_loss_percentage": profit_loss_percentage,
-            "first_trade_date": trades[0]["timestamp"] if trades else None,
-            "last_trade_date": trades[-1]["timestamp"] if trades else None
+            "total_profit": total_profit,
+            "profit_percentage": profit_percentage,
+            "initial_balance": initial_balance,
+            "final_balance": final_balance,
+            "highest_price": highest_price,
+            "lowest_price": lowest_price,
+            "total_buy_volume": total_buy_volume,
+            "total_sell_volume": total_sell_volume
         }
     
     @staticmethod
@@ -169,7 +188,7 @@ class BotTradeModel:
     def get_all_bots():
         """
         Retorna todos os bots únicos que possuem registro de operações, com estatísticas
-        
+
         Returns:
             list: Lista de dicionários com informações de cada bot
         """
@@ -177,64 +196,55 @@ class BotTradeModel:
             conn = sqlite3.connect('src/database.db')
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            
-            # Obter todos os IDs de bot únicos
+
+            # Consulta para obter bots únicos com contagem de operações e datas
             cursor.execute('''
-            SELECT DISTINCT bot_id 
-            FROM bot_trades
+            SELECT 
+                bot_id,
+                operation_code AS symbol,
+                COUNT(*) AS total_operations,
+                MIN(timestamp) AS start_date,
+                MAX(timestamp) AS end_date
+            FROM 
+                bot_trades
+            GROUP BY 
+                bot_id
+            ORDER BY 
+                MAX(timestamp) DESC
             ''')
             
-            bot_ids = [row[0] for row in cursor.fetchall()]
-            
-            # Se precisarmos ordenar, podemos fazer isso em uma etapa separada
-            if bot_ids:
-                # Consulta separada para obter a primeira timestamp de cada bot
-                cursor.execute('''
-                SELECT bot_id, MIN(timestamp) as first_timestamp
-                FROM bot_trades
-                GROUP BY bot_id
-                ''')
-                
-                timestamp_map = {row['bot_id']: row['first_timestamp'] for row in cursor.fetchall()}
-                # Ordenar IDs com base nos timestamps (do mais recente para o mais antigo)
-                bot_ids.sort(key=lambda bot_id: timestamp_map.get(bot_id, ''), reverse=True)
-            
-            conn.close()
-            
-            # Construir lista de resultados com estatísticas para cada bot
             bots = []
-            for bot_id in bot_ids:
-                # Obter primeiro trade para informações básicas
-                trades = BotTradeModel.get_trades_by_bot(bot_id)
-                if not trades:
-                    continue
-                    
-                first_trade = trades[0]
+            for row in cursor.fetchall():
+                bot_id = row['bot_id']
+                
+                # Obter estatísticas para cada bot
                 stats = BotTradeModel.get_bot_statistics(bot_id)
                 
-                # Determinar datas de início e fim
-                timestamps = [trade["timestamp"] for trade in trades]
-                created_at = min(timestamps) if timestamps else ""
-                updated_at = max(timestamps) if timestamps else ""
+                # Extrair símbolo (par de moedas) da operação
+                symbol = row['symbol']
                 
-                # Extrair códigos de operação e stock do formato bot_id: BTCUSDT_BTC_timestamp
-                parts = bot_id.split('_')
-                operation_code = parts[0] if len(parts) > 0 else ""
-                stock_code = parts[1] if len(parts) > 1 else ""
-                
+                # Adicionar bot à lista com dados formatados
                 bots.append({
-                    "id": bot_id,
-                    "operation_code": operation_code,
-                    "stock_code": stock_code,
-                    "trades_count": len(trades),
-                    "created_at": created_at,
-                    "updated_at": updated_at,
-                    "profit_loss": stats["profit_loss"],
-                    "profit_loss_percentage": stats["profit_loss_percentage"]
+                    'id': bot_id,
+                    'symbol': symbol,
+                    'total_operations': row['total_operations'],
+                    'start_date': row['start_date'],
+                    'end_date': row['end_date'],
+                    'profit_percentage': stats.get('profit_percentage', 0),
+                    'total_profit': stats.get('total_profit', 0),
+                    'initial_balance': stats.get('initial_balance', 0),
+                    'final_balance': stats.get('final_balance', 0),
+                    'total_buy_volume': stats.get('total_buy_volume', 0),
+                    'total_sell_volume': stats.get('total_sell_volume', 0),
+                    'highest_price': stats.get('highest_price', 0),
+                    'lowest_price': stats.get('lowest_price', 0),
+                    'buy_trades': stats.get('buy_trades', 0),
+                    'sell_trades': stats.get('sell_trades', 0)
                 })
-                
+            
+            conn.close()
             return bots
             
         except Exception as e:
-            print(f"Erro ao listar bots: {str(e)}")
+            print(f"Erro ao obter lista de bots: {str(e)}")
             return [] 

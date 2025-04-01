@@ -6,6 +6,8 @@
     <title>Histórico de Bots | Robo Trader</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
     <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+    <!-- Chart.js para gráficos -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         .simulation-card {
             border: 1px solid #ddd;
@@ -144,252 +146,100 @@
             padding: 40px;
             color: #6c757d;
         }
+        
+        /* Estilos para estatísticas */
+        .simulation-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .stat-card {
+            background-color: #f5f5f5;
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .stat-card span {
+            display: block;
+            font-size: 0.8rem;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        
+        .stat-card h3 {
+            margin: 0;
+            font-size: 1.2rem;
+        }
+        
+        .text-success {
+            color: #28a745;
+        }
+        
+        .text-danger {
+            color: #dc3545;
+        }
+        
+        /* Estilos para o modal */
+        .chart-container {
+            margin-top: 20px;
+            height: 300px;
+        }
     </style>
 </head>
 <body>
     {% include 'nav.html' %}
     
     <div class="container">
-        <h1>Histórico de Bots</h1>
+        <div class="page-header">
+            <h1>Histórico de Bots</h1>
+            <p>Visualize as operações executadas pelos bots em ambiente real.</p>
+        </div>
         
-        <div id="loading" class="loading-container">
+        <div id="errorContainer" style="display: none;" class="alert alert-danger"></div>
+        
+        <div id="loadingContainer" class="loading-container">
             <div class="loader"></div>
             <p>Carregando histórico...</p>
         </div>
         
-        <div id="error-message" class="alert alert-danger" style="display: none;"></div>
-        
-        <div id="bots-container"></div>
-        
-        <div id="details-modal" class="modal">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h2 id="modal-title">Detalhes do Bot</h2>
-                    <span class="modal-close">&times;</span>
-                </div>
-                <div id="modal-body">
-                    <!-- O conteúdo será preenchido via JavaScript -->
-                </div>
-            </div>
-        </div>
+        <div id="botsContainer" class="bots-container"></div>
     </div>
     
+    <!-- Modal de Detalhes -->
+    <div id="detailsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Detalhes do Bot</h2>
+                <span class="close-modal">&times;</span>
+            </div>
+            
+            <div id="detailsLoadingContainer" class="loading-container">
+                <div class="loader"></div>
+                <p>Carregando detalhes...</p>
+            </div>
+            
+            <div id="detailsContainer" class="modal-body"></div>
+        </div>
+    </div>
+
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            const botsContainer = document.getElementById('bots-container');
-            const loadingElement = document.getElementById('loading');
-            const errorElement = document.getElementById('error-message');
-            const detailsModal = document.getElementById('details-modal');
-            const modalTitle = document.getElementById('modal-title');
-            const modalBody = document.getElementById('modal-body');
-            const modalClose = document.querySelector('.modal-close');
+            const botsContainer = document.getElementById('botsContainer');
+            const loadingElement = document.getElementById('loadingContainer');
+            const errorElement = document.getElementById('errorContainer');
             
-            // Carregar histórico de bots
-            fetch('/api/bot/history/list')
-                .then(response => response.json())
-                .then(data => {
-                    loadingElement.style.display = 'none';
-                    
-                    if (!data.success) {
-                        errorElement.textContent = `Erro ao carregar histórico: ${data.error || 'Falha no servidor'}`;
-                        errorElement.style.display = 'block';
-                        return;
-                    }
-                    
-                    const bots = data.bots || [];
-                    
-                    if (bots.length === 0) {
-                        botsContainer.innerHTML = `
-                            <div class="no-simulations">
-                                <i class="material-icons" style="font-size: 48px;">history</i>
-                                <h3>Nenhum histórico de bot encontrado</h3>
-                                <p>Quando você executar operações com o bot real, o histórico aparecerá aqui.</p>
-                            </div>
-                        `;
-                        return;
-                    }
-                    
-                    // Renderizar cards para cada bot
-                    bots.forEach(bot => {
-                        const profitLoss = parseFloat(bot.profit_loss).toFixed(4);
-                        const profitLossClass = profitLoss > 0 ? 'profit' : profitLoss < 0 ? 'loss' : 'neutral';
-                        const profitLossPercentage = parseFloat(bot.profit_loss_percentage).toFixed(2);
-                        
-                        const botCard = document.createElement('div');
-                        botCard.className = 'simulation-card';
-                        botCard.innerHTML = `
-                            <div class="card-header">
-                                <div>
-                                    <strong>${bot.stock_code}/${bot.operation_code}</strong>
-                                    <span class="badge">ID: ${bot.id}</span>
-                                </div>
-                                <span class="${profitLossClass}">
-                                    ${profitLoss > 0 ? '+' : ''}${profitLoss} (${profitLossPercentage}%)
-                                </span>
-                            </div>
-                            <div class="card-body">
-                                <div>
-                                    <p><strong>Operações:</strong> ${bot.trades_count}</p>
-                                    <p><strong>Iniciado em:</strong> ${new Date(bot.created_at).toLocaleString()}</p>
-                                    <p><strong>Última operação:</strong> ${new Date(bot.updated_at).toLocaleString()}</p>
-                                </div>
-                            </div>
-                            <div class="card-footer">
-                                <button class="button button-primary view-details" data-id="${bot.id}">Ver Detalhes</button>
-                            </div>
-                        `;
-                        
-                        botsContainer.appendChild(botCard);
-                    });
-                    
-                    // Adicionar eventos aos botões de detalhes
-                    document.querySelectorAll('.view-details').forEach(button => {
-                        button.addEventListener('click', function() {
-                            const botId = this.getAttribute('data-id');
-                            showBotDetails(botId);
-                        });
-                    });
-                })
-                .catch(error => {
-                    loadingElement.style.display = 'none';
-                    errorElement.textContent = `Erro ao carregar histórico: ${error.message}`;
-                    errorElement.style.display = 'block';
-                    console.error('Erro:', error);
-                });
+            // Modal elements
+            const detailsModal = document.getElementById('detailsModal');
+            const closeModal = document.querySelector('.close-modal');
+            const detailsContainer = document.getElementById('detailsContainer');
+            const detailsLoadingElement = document.getElementById('detailsLoadingContainer');
             
-            // Função para mostrar detalhes do bot
-            function showBotDetails(botId) {
-                // Mostrar carregamento no modal
-                modalBody.innerHTML = `
-                    <div class="loading-container">
-                        <div class="loader"></div>
-                        <p>Carregando detalhes...</p>
-                    </div>
-                `;
-                
-                modalTitle.textContent = `Detalhes do Bot (ID: ${botId})`;
-                detailsModal.style.display = 'flex';
-                
-                // Carregar detalhes do bot
-                fetch(`/api/bot/history/${botId}`)
-                    .then(response => response.json())
-                    .then(data => {
-                        if (!data.success) {
-                            modalBody.innerHTML = `
-                                <div class="alert alert-danger">
-                                    Erro ao carregar detalhes: ${data.error || 'Falha no servidor'}
-                                </div>
-                            `;
-                            return;
-                        }
-                        
-                        const { trades, statistics, details } = data;
-                        
-                        // Definir classes de estilo com base no lucro/prejuízo
-                        const profitLossClass = statistics.profit_loss > 0 ? 'profit' : statistics.profit_loss < 0 ? 'loss' : 'neutral';
-                        
-                        // Renderizar estatísticas
-                        let statsHtml = `
-                            <h3>Estatísticas</h3>
-                            <div class="stats-container">
-                                <div class="stat-box">
-                                    <div class="stat-title">Total de Operações</div>
-                                    <div class="stat-value neutral">${statistics.total_trades}</div>
-                                </div>
-                                <div class="stat-box">
-                                    <div class="stat-title">Compras</div>
-                                    <div class="stat-value neutral">${statistics.buy_trades}</div>
-                                </div>
-                                <div class="stat-box">
-                                    <div class="stat-title">Vendas</div>
-                                    <div class="stat-value neutral">${statistics.sell_trades}</div>
-                                </div>
-                                <div class="stat-box">
-                                    <div class="stat-title">Lucro/Prejuízo</div>
-                                    <div class="stat-value ${profitLossClass}">${parseFloat(statistics.profit_loss).toFixed(4)}</div>
-                                </div>
-                                <div class="stat-box">
-                                    <div class="stat-title">Percentual</div>
-                                    <div class="stat-value ${profitLossClass}">${parseFloat(statistics.profit_loss_percentage).toFixed(2)}%</div>
-                                </div>
-                            </div>
-                            <div class="stats-container">
-                                <div class="stat-box">
-                                    <div class="stat-title">Total de Compras</div>
-                                    <div class="stat-value neutral">${parseFloat(statistics.total_buy_value).toFixed(4)}</div>
-                                </div>
-                                <div class="stat-box">
-                                    <div class="stat-title">Total de Vendas</div>
-                                    <div class="stat-value neutral">${parseFloat(statistics.total_sell_value).toFixed(4)}</div>
-                                </div>
-                            </div>
-                        `;
-                        
-                        // Renderizar tabela de operações
-                        let tradesHtml = `
-                            <h3>Operações</h3>
-                            <table class="trades-table">
-                                <thead>
-                                    <tr>
-                                        <th>ID</th>
-                                        <th>Data/Hora</th>
-                                        <th>Tipo</th>
-                                        <th>Preço</th>
-                                        <th>Quantidade</th>
-                                        <th>Valor Total</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                        `;
-                        
-                        trades.forEach(trade => {
-                            const tradeTypeClass = trade.trade_type === 'BUY' ? 'loss' : 'profit';
-                            const tradeTypeText = trade.trade_type === 'BUY' ? 'Compra' : 'Venda';
-                            
-                            tradesHtml += `
-                                <tr>
-                                    <td>${trade.id}</td>
-                                    <td>${new Date(trade.timestamp).toLocaleString()}</td>
-                                    <td class="${tradeTypeClass}">${tradeTypeText}</td>
-                                    <td>${parseFloat(trade.price).toFixed(4)}</td>
-                                    <td>${parseFloat(trade.quantity).toFixed(8)}</td>
-                                    <td>${parseFloat(trade.total_value).toFixed(4)}</td>
-                                </tr>
-                            `;
-                        });
-                        
-                        tradesHtml += `
-                                </tbody>
-                            </table>
-                        `;
-                        
-                        // Renderizar detalhes do bot
-                        const botDetailsHtml = `
-                            <div class="bot-details">
-                                <h3>Informações</h3>
-                                <p><strong>Bot ID:</strong> ${botId}</p>
-                                <p><strong>Par de Operação:</strong> ${details.operation_code}</p>
-                                <p><strong>Moeda Base:</strong> ${details.stock_code}</p>
-                                <p><strong>Primeiro Trade:</strong> ${new Date(statistics.first_trade_date).toLocaleString()}</p>
-                                <p><strong>Último Trade:</strong> ${new Date(statistics.last_trade_date).toLocaleString()}</p>
-                            </div>
-                        `;
-                        
-                        // Combinar tudo
-                        modalBody.innerHTML = botDetailsHtml + statsHtml + tradesHtml;
-                    })
-                    .catch(error => {
-                        modalBody.innerHTML = `
-                            <div class="alert alert-danger">
-                                Erro ao carregar detalhes: ${error.message}
-                            </div>
-                        `;
-                        console.error('Erro:', error);
-                    });
-            }
-            
-            // Fechar modal
-            modalClose.addEventListener('click', function() {
+            // Fechar modal ao clicar no X
+            closeModal.addEventListener('click', function() {
                 detailsModal.style.display = 'none';
             });
             
@@ -399,6 +249,310 @@
                     detailsModal.style.display = 'none';
                 }
             });
+            
+            // Carregar histórico de bots
+            fetch('/api/bot/history/list')
+                .then(response => response.json())
+                .then(data => {
+                    loadingElement.style.display = 'none';
+
+                    if (!data.success) {
+                        botsContainer.innerHTML = `
+                            <div class="alert alert-danger">
+                                <i class="material-icons">error</i>
+                                Erro ao carregar histórico
+                            </div>
+                        `;
+                        return;
+                    }
+
+                    const bots = data.bots || [];
+                    
+                    if (bots.length === 0) {
+                        botsContainer.innerHTML = `
+                            <div class="no-simulations">
+                                <i class="material-icons" style="font-size: 48px;">history</i>
+                                <h3>Nenhum bot encontrado</h3>
+                                <p>Ainda não há histórico de operações do bot real.</p>
+                            </div>
+                        `;
+                        return;
+                    }
+
+                    botsContainer.innerHTML = '';
+                    
+                    // Criar tabela de bots
+                    const tableContainer = document.createElement('div');
+                    tableContainer.className = 'table-responsive';
+                    
+                    const table = document.createElement('table');
+                    table.className = 'simulation-table table table-striped';
+                    
+                    const thead = document.createElement('thead');
+                    thead.innerHTML = `
+                        <tr>
+                            <th>Símbolo</th>
+                            <th>Operações</th>
+                            <th>Data Início</th>
+                            <th>Data Fim</th>
+                            <th>Lucro</th>
+                            <th>Lucro %</th>
+                            <th>Ações</th>
+                        </tr>
+                    `;
+                    
+                    const tbody = document.createElement('tbody');
+                    
+                    bots.forEach(bot => {
+                        const row = document.createElement('tr');
+                        
+                        // Formatação de valores
+                        const profitClass = bot.total_profit >= 0 ? 'text-success' : 'text-danger';
+                        const profitSymbol = bot.total_profit >= 0 ? '+' : '';
+                        
+                        // Data formatada
+                        const startDate = new Date(bot.start_date);
+                        const endDate = new Date(bot.end_date);
+                        const startFormatted = startDate.toLocaleDateString('pt-BR');
+                        const endFormatted = endDate.toLocaleDateString('pt-BR');
+                        
+                        row.innerHTML = `
+                            <td>${bot.symbol}</td>
+                            <td>${bot.total_operations}</td>
+                            <td>${startFormatted}</td>
+                            <td>${endFormatted}</td>
+                            <td class="${profitClass}">${profitSymbol}${bot.total_profit.toFixed(2)}</td>
+                            <td class="${profitClass}">${profitSymbol}${bot.profit_percentage.toFixed(2)}%</td>
+                            <td>
+                                <button class="btn btn-sm btn-primary view-details" data-id="${bot.id}">
+                                    <i class="material-icons">visibility</i>
+                                </button>
+                            </td>
+                        `;
+                        
+                        tbody.appendChild(row);
+                    });
+                    
+                    table.appendChild(thead);
+                    table.appendChild(tbody);
+                    tableContainer.appendChild(table);
+                    botsContainer.appendChild(tableContainer);
+                    
+                    // Adicionar event listeners para os botões de detalhes
+                    document.querySelectorAll('.view-details').forEach(button => {
+                        button.addEventListener('click', () => {
+                            const botId = button.getAttribute('data-id');
+                            showBotDetails(botId);
+                        });
+                    });
+                })
+                .catch(error => {
+                    loadingElement.style.display = 'none';
+                    botsContainer.innerHTML = `
+                        <div class="alert alert-danger">
+                            <i class="material-icons">error</i>
+                            Erro ao carregar dados: ${error.message}
+                        </div>
+                    `;
+                });
+            
+            // Função para mostrar detalhes de um bot específico
+            function showBotDetails(botId) {
+                // Mostrar carregamento
+                detailsLoadingElement.style.display = 'block';
+                detailsContainer.innerHTML = '';
+                
+                // Mostrar modal
+                document.getElementById('detailsModal').style.display = 'block';
+                
+                // Buscar dados do bot
+                fetch(`/api/bot/history/${botId}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        detailsLoadingElement.style.display = 'none';
+                        
+                        if (!data.success) {
+                            detailsContainer.innerHTML = `
+                                <div class="alert alert-danger">
+                                    <i class="material-icons">error</i>
+                                    ${data.error || 'Erro ao carregar detalhes'}
+                                </div>
+                            `;
+                            return;
+                        }
+                        
+                        const { trades, statistics } = data;
+                        
+                        if (!trades || trades.length === 0) {
+                            detailsContainer.innerHTML = `
+                                <div class="alert alert-warning">
+                                    <i class="material-icons">warning</i>
+                                    Nenhuma operação encontrada para este bot
+                                </div>
+                            `;
+                            return;
+                        }
+                        
+                        // Extrair símbolo do primeiro trade
+                        const symbol = trades[0].operation_code;
+                        
+                        // Criar contêiner para estatísticas
+                        const statsContainer = document.createElement('div');
+                        statsContainer.className = 'simulation-stats';
+                        
+                        // Definir cor baseada no lucro
+                        const profitClass = statistics.total_profit >= 0 ? 'text-success' : 'text-danger';
+                        const profitSymbol = statistics.total_profit >= 0 ? '+' : '';
+                        
+                        // Adicionar cards de estatísticas
+                        statsContainer.innerHTML = `
+                            <div class="stat-card">
+                                <span>Símbolo</span>
+                                <h3>${symbol}</h3>
+                            </div>
+                            <div class="stat-card">
+                                <span>Total de Operações</span>
+                                <h3>${statistics.total_trades}</h3>
+                            </div>
+                            <div class="stat-card">
+                                <span>Compras / Vendas</span>
+                                <h3>${statistics.buy_trades} / ${statistics.sell_trades}</h3>
+                            </div>
+                            <div class="stat-card">
+                                <span>Saldo Inicial</span>
+                                <h3>$${statistics.initial_balance.toFixed(2)}</h3>
+                            </div>
+                            <div class="stat-card">
+                                <span>Saldo Final</span>
+                                <h3>$${statistics.final_balance.toFixed(2)}</h3>
+                            </div>
+                            <div class="stat-card ${profitClass}">
+                                <span>Lucro</span>
+                                <h3>${profitSymbol}$${statistics.total_profit.toFixed(2)}</h3>
+                            </div>
+                            <div class="stat-card ${profitClass}">
+                                <span>Lucro %</span>
+                                <h3>${profitSymbol}${statistics.profit_percentage.toFixed(2)}%</h3>
+                            </div>
+                            <div class="stat-card">
+                                <span>Preço Mais Alto</span>
+                                <h3>$${statistics.highest_price.toFixed(2)}</h3>
+                            </div>
+                            <div class="stat-card">
+                                <span>Preço Mais Baixo</span>
+                                <h3>$${statistics.lowest_price.toFixed(2)}</h3>
+                            </div>
+                        `;
+                        
+                        // Adicionar estatísticas ao container
+                        detailsContainer.appendChild(statsContainer);
+                        
+                        // Criar tabela de operações
+                        const tableContainer = document.createElement('div');
+                        tableContainer.className = 'table-responsive mt-4';
+                        tableContainer.innerHTML = `
+                            <h3>Operações</h3>
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Data/Hora</th>
+                                        <th>Tipo</th>
+                                        <th>Preço</th>
+                                        <th>Quantidade</th>
+                                        <th>Valor Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tradesList"></tbody>
+                            </table>
+                        `;
+                        
+                        detailsContainer.appendChild(tableContainer);
+                        
+                        const tradesList = document.getElementById('tradesList');
+                        
+                        // Ordenar trades por timestamp (mais recente primeiro)
+                        trades.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                        
+                        // Adicionar cada trade à tabela
+                        trades.forEach(trade => {
+                            const row = document.createElement('tr');
+                            const tradeDate = new Date(trade.timestamp);
+                            const tradeType = trade.trade_type;
+                            const typeClass = tradeType === 'BUY' ? 'text-success' : 'text-danger';
+                            
+                            row.innerHTML = `
+                                <td>${tradeDate.toLocaleString('pt-BR')}</td>
+                                <td class="${typeClass}">${tradeType === 'BUY' ? 'Compra' : 'Venda'}</td>
+                                <td>$${parseFloat(trade.price).toFixed(2)}</td>
+                                <td>${parseFloat(trade.quantity).toFixed(8)}</td>
+                                <td>$${parseFloat(trade.total_value).toFixed(2)}</td>
+                            `;
+                            
+                            tradesList.appendChild(row);
+                        });
+                        
+                        // Preparar dados para gráfico de preço
+                        if (trades.length > 0) {
+                            try {
+                                // Ordenar por timestamp (mais antigo primeiro para o gráfico)
+                                const sortedTrades = [...trades].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+                                
+                                // Criar elemento para o gráfico
+                                const chartContainer = document.createElement('div');
+                                chartContainer.className = 'chart-container';
+                                chartContainer.innerHTML = `
+                                    <h3>Histórico de Preços</h3>
+                                    <canvas id="priceChart"></canvas>
+                                `;
+                                
+                                detailsContainer.appendChild(chartContainer);
+                                
+                                // Extrair dados para o gráfico
+                                const labels = sortedTrades.map(t => {
+                                    const date = new Date(t.timestamp);
+                                    return date.toLocaleDateString('pt-BR');
+                                });
+                                
+                                const prices = sortedTrades.map(t => parseFloat(t.price));
+                                
+                                // Criar gráfico usando Chart.js
+                                const ctx = document.getElementById('priceChart').getContext('2d');
+                                new Chart(ctx, {
+                                    type: 'line',
+                                    data: {
+                                        labels: labels,
+                                        datasets: [{
+                                            label: 'Preço',
+                                            data: prices,
+                                            borderColor: 'rgb(75, 192, 192)',
+                                            tension: 0.1,
+                                            fill: false
+                                        }]
+                                    },
+                                    options: {
+                                        responsive: true,
+                                        scales: {
+                                            y: {
+                                                beginAtZero: false
+                                            }
+                                        }
+                                    }
+                                });
+                            } catch (chartError) {
+                                console.error('Erro ao criar gráfico:', chartError);
+                            }
+                        }
+                    })
+                    .catch(error => {
+                        detailsLoadingElement.style.display = 'none';
+                        detailsContainer.innerHTML = `
+                            <div class="alert alert-danger">
+                                <i class="material-icons">error</i>
+                                Erro ao carregar detalhes: ${error.message}
+                            </div>
+                        `;
+                    });
+            }
         });
     </script>
 </body>
