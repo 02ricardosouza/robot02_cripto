@@ -654,7 +654,7 @@
                 <td>${position}</td>
                 <td>${bot.last_buy_price > 0 ? bot.last_buy_price.toFixed(8) : '-'}</td>
                 <td>${bot.last_sell_price > 0 ? bot.last_sell_price.toFixed(8) : '-'}</td>
-                <td>${bot.stock_balance.toFixed(8)}</td>
+                <td>${bot.stock_balance !== undefined && bot.stock_balance !== null ? bot.stock_balance.toFixed(8) : '0.00000000'}</td>
                 <td>
                     <button class="button button-danger btn-stop-bot" data-id="${bot.id}">Parar</button>
                 </td>
